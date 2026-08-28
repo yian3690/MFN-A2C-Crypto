@@ -2,8 +2,13 @@
 __pycache__/
 *.pyc
 tensorboard/
+checkpoints/
 data/
-mfn_a2c_test*
-backtest_results.csv
-backtest_portfolio_value.png
 *.zip
+mfn_a2c_test*
+mfn_a2c_formal*
+backtest_results.csv
+formal_backtest_results.csv
+formal_metrics.csv
+mfn_vs_buyhold.csv
+*.png
