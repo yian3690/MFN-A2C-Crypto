@@ -9,22 +9,18 @@ ROOT = Path(__file__).resolve().parent
 INITIAL_BALANCE = 10000.0
 
 
-def load_curve(
-    filename,
-    column="portfolio_value"
-):
+def load_curve(filename):
 
     df = pd.read_csv(
         ROOT / filename
     )
 
     values = (
-        df[column]
+        df["portfolio_value"]
         .astype(float)
         .reset_index(drop=True)
     )
 
-    # Normalize all methods to exactly $10,000.
     values = (
         values /
         values.iloc[0] *
@@ -34,9 +30,18 @@ def load_curve(
     return values
 
 
+def calculate_return(values):
+
+    return (
+        values.iloc[-1] /
+        values.iloc[0] -
+        1
+    ) * 100
+
+
 def main():
 
-    mfn = load_curve(
+    proposed = load_curve(
         "formal_backtest_results.csv"
     )
 
@@ -44,56 +49,71 @@ def main():
         "a2c_baseline_results.csv"
     )
 
+    a2c_without_ti = load_curve(
+        "a2c_without_ti_results.csv"
+    )
+
     buy_hold = load_curve(
         "buy_hold_results.csv"
     )
 
     n = min(
-        len(mfn),
+        len(proposed),
         len(a2c),
+        len(a2c_without_ti),
         len(buy_hold),
     )
 
-    mfn = mfn.iloc[:n]
+    proposed = proposed.iloc[:n]
     a2c = a2c.iloc[:n]
+    a2c_without_ti = (
+        a2c_without_ti.iloc[:n]
+    )
     buy_hold = buy_hold.iloc[:n]
 
     comparison = pd.DataFrame({
 
-        "timestep":
-            range(n),
+        "timestep": range(n),
 
-        "MFN-A2C":
-            mfn.values,
+        "Proposed Method":
+            proposed.values,
 
         "A2C":
             a2c.values,
 
-        "Buy-and-Hold":
+        "A2C w/o TI":
+            a2c_without_ti.values,
+
+        "Buy and Hold":
             buy_hold.values,
     })
 
     comparison.to_csv(
         ROOT /
-        "all_methods_comparison.csv",
+        "experiment1_comparison.csv",
 
         index=False,
     )
 
     print()
-    print("=" * 70)
-    print("ALL METHODS COMPARISON")
-    print("=" * 70)
+    print("=" * 75)
+    print("EXPERIMENT 1 COMPARISON")
+    print("=" * 75)
 
-    for name in [
-        "MFN-A2C",
+    for method in [
+        "Proposed Method",
         "A2C",
-        "Buy-and-Hold",
+        "A2C w/o TI",
+        "Buy and Hold",
     ]:
 
-        final = comparison[
-            name
-        ].iloc[-1]
+        values = comparison[
+            method
+        ]
+
+        final = values.iloc[-1]
+
+        peak = values.max()
 
         total_return = (
             final /
@@ -101,27 +121,34 @@ def main():
             1
         ) * 100
 
-        peak = comparison[
-            name
-        ].max()
-
-        print(
-            f"{name:<18}"
-            f"Final PV = {final:>10.2f}   "
-            f"Return = {total_return:>7.2f}%   "
-            f"Peak = {peak:>10.2f}"
+        improve = (
+            final /
+            comparison[
+                "Buy and Hold"
+            ].iloc[-1]
         )
 
-    print("=" * 70)
+        print(
+            f"{method:<20}"
+            f"Final PV = {final:>10.2f}   "
+            f"Peak PV = {peak:>10.2f}   "
+            f"Return = {total_return:>7.2f}%   "
+            f"Improve = {improve:>6.3f}"
+        )
 
-    # Plot
+    print("=" * 75)
+
+    # ---------------------------------------------------------
+    # Figure
+    # ---------------------------------------------------------
+
     plt.figure(
         figsize=(12, 6)
     )
 
     plt.plot(
-        comparison["MFN-A2C"],
-        label="MFN-A2C",
+        comparison["Proposed Method"],
+        label="Proposed Method",
         linewidth=2,
     )
 
@@ -132,16 +159,15 @@ def main():
     )
 
     plt.plot(
-        comparison["Buy-and-Hold"],
-        label="Buy-and-Hold",
+        comparison["A2C w/o TI"],
+        label="A2C w/o TI",
         linewidth=2,
     )
 
-    plt.axhline(
-        INITIAL_BALANCE,
-        linestyle="--",
-        linewidth=1,
-        label="Initial PV",
+    plt.plot(
+        comparison["Buy and Hold"],
+        label="Buy and Hold",
+        linewidth=2,
     )
 
     plt.xlabel(
@@ -153,7 +179,7 @@ def main():
     )
 
     plt.title(
-        "Cryptocurrency Portfolio Performance Comparison"
+        "Results of Experiment 1"
     )
 
     plt.legend()
@@ -167,7 +193,7 @@ def main():
 
     output = (
         ROOT /
-        "all_methods_comparison.png"
+        "experiment1_comparison.png"
     )
 
     plt.savefig(
@@ -180,8 +206,11 @@ def main():
 
     print()
     print(
-        "Saved:",
-        output
+        f"Saved: {output}"
+    )
+
+    print(
+        f"Saved: {ROOT / 'experiment1_comparison.csv'}"
     )
 
 
