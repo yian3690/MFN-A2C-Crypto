@@ -1,0 +1,9 @@
+﻿.venv/
+__pycache__/
+*.pyc
+tensorboard/
+data/
+mfn_a2c_test*
+backtest_results.csv
+backtest_portfolio_value.png
+*.zip
