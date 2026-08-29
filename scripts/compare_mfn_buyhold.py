@@ -5,8 +5,10 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
+RESULTS = ROOT / "results"
+FIGURES = ROOT / "figures"
 
 INITIAL_BALANCE = 10000.0
 LOOKBACK = 20
@@ -59,12 +61,14 @@ def calculate_buy_and_hold(raw):
 
 
 def main():
+    RESULTS.mkdir(parents=True, exist_ok=True)
+    FIGURES.mkdir(parents=True, exist_ok=True)
 
     # ------------------------------------------------------------
     # 1. Load MFN-A2C results
     # ------------------------------------------------------------
 
-    mfn_file = ROOT / "formal_backtest_results.csv"
+    mfn_file = RESULTS / "formal_backtest_results.csv"
 
     if not mfn_file.exists():
         raise FileNotFoundError(
@@ -138,7 +142,7 @@ def main():
     })
 
     comparison.to_csv(
-        ROOT / "mfn_vs_buyhold.csv",
+        RESULTS / "mfn_vs_buyhold.csv",
         index=False,
     )
 
@@ -257,7 +261,7 @@ def main():
 
     plt.tight_layout()
 
-    output = ROOT / "mfn_vs_buyhold.png"
+    output = FIGURES / "mfn_vs_buyhold.png"
 
     plt.savefig(
         output,

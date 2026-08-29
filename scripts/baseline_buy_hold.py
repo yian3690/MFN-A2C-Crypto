@@ -4,14 +4,16 @@ import numpy as np
 import pandas as pd
 
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
+RESULTS = ROOT / "results"
 
 
 INITIAL_BALANCE = 10000.0
 
 
 def main():
+    RESULTS.mkdir(parents=True, exist_ok=True)
 
     df = pd.read_csv(
         DATA / "merged_output_test.csv"
@@ -53,7 +55,7 @@ def main():
     })
 
     result.to_csv(
-        ROOT / "buy_hold_results.csv",
+        RESULTS / "buy_hold_results.csv",
         index=False,
     )
 

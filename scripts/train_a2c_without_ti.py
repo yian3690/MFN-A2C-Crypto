@@ -1,22 +1,28 @@
+import sys
 from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 
 from stable_baselines3 import A2C
 from stable_baselines3.common.callbacks import CheckpointCallback
 from stable_baselines3.common.monitor import Monitor
 
-from portfolio_env_sb3 import CryptoPortfolioEnv
+from src.portfolio_env_sb3 import CryptoPortfolioEnv
+from src.price_only_env import PriceOnlyWrapper
 
 
-ROOT = Path(__file__).resolve().parent
 DATA = ROOT / "data"
-
+MODELS = ROOT / "models"
+LOGS = ROOT / "logs"
+CHECKPOINTS = ROOT / "checkpoints_a2c_without_ti"
 
 TOTAL_TIMESTEPS = 100_000
 
 
 def make_env():
 
-    env = CryptoPortfolioEnv(
+    base_env = CryptoPortfolioEnv(
         pct_csv=str(
             DATA / "pct_change_output_train.csv"
         ),
@@ -42,12 +48,45 @@ def make_env():
         random_start=True,
     )
 
+    # Remove technical indicators.
+    env = PriceOnlyWrapper(
+        base_env,
+        price_dim=16,
+    )
+
     return Monitor(env)
 
 
 def main():
+    MODELS.mkdir(parents=True, exist_ok=True)
+    (LOGS / "tensorboard").mkdir(parents=True, exist_ok=True)
+    CHECKPOINTS.mkdir(parents=True, exist_ok=True)
 
     env = make_env()
+
+    print("=" * 60)
+    print("A2C WITHOUT TECHNICAL INDICATORS")
+    print("=" * 60)
+
+    print(
+        f"Observation shape : {env.observation_space.shape}"
+    )
+
+    print(
+        f"Total timesteps   : {TOTAL_TIMESTEPS}"
+    )
+
+    print("Price features    : 16")
+    print("Technical features: 0")
+    print("MFN               : NO")
+    print("Historical window : 20")
+    print("Time interval     : 4H")
+    print("DSR eta           : 0.005")
+    print("A2C gamma         : 0.99")
+    print("A2C n_steps       : 540")
+    print("Learning rate     : 7e-4")
+
+    print("=" * 60)
 
     policy_kwargs = dict(
 
@@ -78,35 +117,20 @@ def main():
         seed=123,
 
         tensorboard_log=str(
-            ROOT / "tensorboard"
+            LOGS / "tensorboard"
         ),
     )
 
     checkpoint_callback = CheckpointCallback(
+
         save_freq=100_000,
+
         save_path=str(
-            ROOT / "checkpoints_a2c"
+            CHECKPOINTS
         ),
-        name_prefix="A2C",
+
+        name_prefix="A2C_without_TI",
     )
-
-    print("=" * 60)
-    print("A2C BASELINE TRAINING")
-    print("=" * 60)
-
-    print(
-        f"Total timesteps : {TOTAL_TIMESTEPS}"
-    )
-
-    print("MFN             : NO")
-    print("Feature extractor: SB3 MLP")
-    print("Window          : 20")
-    print("Interval        : 4H")
-    print("DSR eta         : 0.005")
-    print("A2C gamma       : 0.99")
-    print("A2C n_steps     : 540")
-
-    print("=" * 60)
 
     model.learn(
 
@@ -118,12 +142,15 @@ def main():
     )
 
     model.save(
-        str(ROOT / "a2c_baseline")
+        str(
+            MODELS /
+            "a2c_without_ti"
+        )
     )
 
     print()
     print("=" * 60)
-    print("A2C BASELINE FINISHED")
+    print("A2C WITHOUT TI TRAINING FINISHED")
     print("=" * 60)
 
     env.close()

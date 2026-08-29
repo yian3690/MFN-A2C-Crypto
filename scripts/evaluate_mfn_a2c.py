@@ -2,22 +2,30 @@
 Backtest a trained MFN-A2C model on the final 1,080 rows.
 """
 
+import sys
 from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 
 import matplotlib.pyplot as plt
 import pandas as pd
 from stable_baselines3 import A2C
 from stable_baselines3.common.monitor import Monitor
 
-from mfn_sb3_extractor import TwoViewMFN
-from portfolio_env_sb3 import CryptoPortfolioEnv
+from src.mfn_sb3_extractor import TwoViewMFN
+from src.portfolio_env_sb3 import CryptoPortfolioEnv
 
 
-ROOT = Path(__file__).resolve().parent
 DATA = ROOT / "data"
+RESULTS = ROOT / "results"
+MODELS = ROOT / "models"
+FIGURES = ROOT / "figures"
 
 
 def main():
+    RESULTS.mkdir(parents=True, exist_ok=True)
+    FIGURES.mkdir(parents=True, exist_ok=True)
     env = CryptoPortfolioEnv(
         pct_csv=str(DATA / "pct_change_output_test.csv"),
         ta_csv=str(DATA / "ta_test_test.csv"),
@@ -31,7 +39,7 @@ def main():
     )
     env = Monitor(env)
 
-    model = A2C.load(str(ROOT / "mfn_a2c_test"), env=env)
+    model = A2C.load(str(MODELS / "mfn_a2c_test"), env=env)
 
     obs, info = env.reset()
     done = False
@@ -42,7 +50,7 @@ def main():
         done = terminated or truncated
 
     result = env.unwrapped.get_results()
-    result.to_csv(ROOT / "backtest_results.csv", index=False)
+    result.to_csv(RESULTS / "backtest_results.csv", index=False)
 
     print("\nFinal portfolio value:", result["portfolio_value"].iloc[-1])
     print("Peak portfolio value :", result["portfolio_value"].max())
@@ -53,7 +61,7 @@ def main():
     plt.xlabel("4-hour timestep")
     plt.ylabel("Portfolio Value")
     plt.tight_layout()
-    plt.savefig(ROOT / "backtest_portfolio_value.png", dpi=200)
+    plt.savefig(FIGURES / "backtest_portfolio_value.png", dpi=200)
     plt.show()
 
 

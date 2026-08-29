@@ -1,16 +1,21 @@
+import sys
 from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 
 import numpy as np
 import pandas as pd
 
 from stable_baselines3 import A2C
 
-from mfn_sb3_extractor import TwoViewMFN
-from portfolio_env_sb3 import CryptoPortfolioEnv
+from src.mfn_sb3_extractor import TwoViewMFN
+from src.portfolio_env_sb3 import CryptoPortfolioEnv
 
 
-ROOT = Path(__file__).resolve().parent
 DATA = ROOT / "data"
+RESULTS = ROOT / "results"
+MODELS = ROOT / "models"
 
 
 def calculate_metrics(values):
@@ -59,6 +64,7 @@ def calculate_metrics(values):
 
 
 def main():
+    RESULTS.mkdir(parents=True, exist_ok=True)
 
     env = CryptoPortfolioEnv(
 
@@ -93,7 +99,7 @@ def main():
 
     model = A2C.load(
 
-        str(ROOT / "mfn_a2c_formal"),
+        str(MODELS / "mfn_a2c_formal"),
 
         env=env,
 
@@ -121,7 +127,7 @@ def main():
     result = env.get_results()
 
     result.to_csv(
-        ROOT / "formal_backtest_results.csv",
+        RESULTS / "formal_backtest_results.csv",
         index=False,
     )
 
@@ -153,7 +159,7 @@ def main():
     pd.DataFrame(
         [metrics]
     ).to_csv(
-        ROOT / "formal_metrics.csv",
+        RESULTS / "formal_metrics.csv",
         index=False,
     )
 
