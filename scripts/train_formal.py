@@ -19,7 +19,7 @@ CHECKPOINTS = ROOT / "checkpoints"
 
 
 #測試先用18000，正式訓練用1,800,000
-TOTAL_TIMESTEPS = 1_800_0
+TOTAL_TIMESTEPS = 1_000_00
 
 
 def make_train_env():
