@@ -1,3 +1,5 @@
+"""Create the Experiment 1 comparison table and portfolio-value figure."""
+
 from pathlib import Path
 
 import pandas as pd
@@ -22,6 +24,7 @@ INITIAL_BALANCE = 10000.0
 
 def load_curve(filename):
 
+    """Load and normalize one saved portfolio-value curve to the common initial balance."""
     filepath = RESULTS / filename
 
     if not filepath.exists():
@@ -58,6 +61,7 @@ def load_curve(filename):
 
 def calculate_return(values):
 
+    """Return the percentage gain or loss over a portfolio-value curve."""
     return (
         values.iloc[-1]
         / values.iloc[0]
@@ -71,6 +75,7 @@ def calculate_return(values):
 
 def main():
 
+    """主程式入口：依序執行此腳本定義的完整流程。"""
     print("=" * 75)
     print("Loading experiment results...")
     print("=" * 75)

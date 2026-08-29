@@ -1,3 +1,5 @@
+"""Backtest the formal MFN-A2C model and export paper-style metrics."""
+
 import sys
 from pathlib import Path
 
@@ -20,6 +22,7 @@ MODELS = ROOT / "models"
 
 def calculate_metrics(values):
 
+    """Compute return, peak value, drawdown, and annualized Sharpe ratio from a value curve."""
     values = np.asarray(values, dtype=np.float64)
 
     initial = values[0]
@@ -64,6 +67,7 @@ def calculate_metrics(values):
 
 
 def main():
+    """主程式入口：依序執行此腳本定義的完整流程。"""
     RESULTS.mkdir(parents=True, exist_ok=True)
 
     env = CryptoPortfolioEnv(

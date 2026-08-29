@@ -1,3 +1,5 @@
+"""Buy-and-hold baseline for the paper experiments."""
+
 from pathlib import Path
 
 import numpy as np
@@ -13,6 +15,7 @@ INITIAL_BALANCE = 10000.0
 
 
 def main():
+    """主程式入口：依序執行此腳本定義的完整流程。"""
     RESULTS.mkdir(parents=True, exist_ok=True)
 
     df = pd.read_csv(

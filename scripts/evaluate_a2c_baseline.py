@@ -1,3 +1,5 @@
+"""Backtest the standard A2C baseline on the held-out test period."""
+
 import sys
 from pathlib import Path
 
@@ -19,6 +21,7 @@ LOOKBACK = 20
 
 
 def main():
+    """主程式入口：依序執行此腳本定義的完整流程。"""
     RESULTS.mkdir(parents=True, exist_ok=True)
 
     test_file = DATA / "pct_change_output_test.csv"

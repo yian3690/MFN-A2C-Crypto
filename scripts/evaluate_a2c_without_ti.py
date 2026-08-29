@@ -1,3 +1,5 @@
+"""Backtest the price-only A2C configuration from Experiment 1."""
+
 import sys
 from pathlib import Path
 
@@ -20,6 +22,7 @@ LOOKBACK = 20
 
 
 def main():
+    """主程式入口：依序執行此腳本定義的完整流程。"""
     RESULTS.mkdir(parents=True, exist_ok=True)
 
     test_rows = len(

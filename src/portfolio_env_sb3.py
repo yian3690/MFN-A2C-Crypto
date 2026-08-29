@@ -23,6 +23,12 @@ from gymnasium import spaces
 
 
 class CryptoPortfolioEnv(gym.Env):
+    """Gymnasium market simulator shared by the A2C and MFN-A2C experiments.
+
+    Each step is one four-hour bar.  Five policy logits become non-negative
+    weights for BTC, ETH, LTC, BNB and USDT; USDT is the risk-off asset with
+    a zero return in this simplified paper-aligned environment.
+    """
     metadata = {"render_modes": ["human"]}
 
     ASSETS = ["BTC", "ETH", "LTC", "BNB", "USDT"]
@@ -40,6 +46,7 @@ class CryptoPortfolioEnv(gym.Env):
         random_start: bool = True,
         render_mode: str | None = None,
     ):
+        """載入對齊資料，驗證特徵維度，並建立環境狀態與空間。"""
         super().__init__()
 
         self.pct_data = pd.read_csv(pct_csv).astype(np.float32)
@@ -119,6 +126,7 @@ class CryptoPortfolioEnv(gym.Env):
         self.B = 0.0
 
     def _get_obs(self, idx: int) -> np.ndarray:
+        """Return the historical window while preserving MFN feature order."""
         end = idx + self.n_previous_timesteps
         price_window = self.pct_data.iloc[idx:end].to_numpy(dtype=np.float32)
         ta_window = self.ta_data.iloc[idx:end].to_numpy(dtype=np.float32)
@@ -126,6 +134,7 @@ class CryptoPortfolioEnv(gym.Env):
         return np.concatenate([price_window, ta_window], axis=1)
 
     def _softmax(self, action: np.ndarray) -> np.ndarray:
+        """Map unconstrained policy logits to valid portfolio weights."""
         z = np.asarray(action, dtype=np.float64)
         z = z - np.max(z)
         exp_z = np.exp(z)
@@ -133,8 +142,11 @@ class CryptoPortfolioEnv(gym.Env):
         return weights
 
     def reset(self, *, seed: int | None = None, options=None):
+        """重設資產、DSR 統計量和本回合的起始市場位置。"""
         super().reset(seed=seed)
 
+        # Training can start at multiple valid points; evaluation sets
+        # random_start=False so every model sees the same held-out period.
         max_start = len(self.pct_data) - self.n_previous_timesteps - self.max_episode_steps - 1
 
         if self.random_start and max_start > 0:
@@ -159,9 +171,12 @@ class CryptoPortfolioEnv(gym.Env):
         return obs, info
 
     def _dsr_reward(self, portfolio_return: float) -> float:
+        """Compute the paper's Differential Sharpe Ratio reward increment."""
         old_A = self.A
         old_B = self.B
 
+        # A/B are exponentially weighted first/second moments of returns.
+        # eta=0.005 in the paper controls how quickly DSR adapts.
         self.A = (1.0 - self.eta) * self.A + self.eta * portfolio_return
         self.B = (1.0 - self.eta) * self.B + self.eta * (portfolio_return ** 2)
 
@@ -179,18 +194,23 @@ class CryptoPortfolioEnv(gym.Env):
 
     def step(self, action):
         # Current observation ends at t.
+        """執行一次再平衡、計算下一期報酬與 reward，並前進一根 K 線。"""
         obs_idx = self.start_idx + self.counter + self.n_previous_timesteps - 1
         next_idx = obs_idx + 1
 
         if next_idx >= len(self.price_data):
             raise RuntimeError("Environment reached the end of the dataset.")
 
+        # Rebalance for the next interval.  Fees and slippage are omitted,
+        # as explicitly assumed by the current paper experiment.
         self.weights = self._softmax(action)
 
         # Four crypto returns from t -> t+1.
         current_prices = self.price_data[obs_idx]
         next_prices = self.price_data[next_idx]
 
+        # Use raw Open prices to realise the next-period return.  The model
+        # itself observes only transformed price and indicator inputs.
         crypto_returns = (next_prices / current_prices) - 1.0
         all_returns = np.concatenate([crypto_returns, [0.0]])
 
@@ -241,6 +261,7 @@ class CryptoPortfolioEnv(gym.Env):
         return obs, float(reward), terminated, truncated, info
 
     def render(self):
+        """在終端機顯示目前步數、投資組合價值和配置權重。"""
         print(
             f"step={self.counter} | "
             f"PV={self.balance:.2f} | "
@@ -248,6 +269,7 @@ class CryptoPortfolioEnv(gym.Env):
         )
 
     def get_results(self) -> pd.DataFrame:
+        """整理歷史投資組合價值、報酬與 reward，供評估腳本儲存。"""
         return pd.DataFrame({
             "portfolio_value": self.balance_history,
             "return": [np.nan] + self.return_history,

@@ -1,3 +1,5 @@
+"""Train MFN-A2C and A2C with DSR and portfolio-value rewards for Experiment 3."""
+
 import sys
 from pathlib import Path
 
@@ -29,6 +31,7 @@ TOTAL_TIMESTEPS = 100_000
 
 def make_env(reward_type):
 
+    """Create the configured Gymnasium environment used by this script."""
     env = CryptoPortfolioEnv(
         pct_csv=str(
             DATA / "pct_change_output_train.csv"
@@ -60,6 +63,7 @@ def make_env(reward_type):
 
 def train_mfn(reward_type):
 
+    """Train and save the MFN-A2C variant for the selected reward type."""
     env = make_env(
         reward_type
     )
@@ -141,6 +145,7 @@ def train_mfn(reward_type):
 
 def train_a2c(reward_type):
 
+    """Train and save the standard A2C variant for the selected reward type."""
     env = make_env(
         reward_type
     )
@@ -198,6 +203,7 @@ def train_a2c(reward_type):
 
 def main():
 
+    """主程式入口：依序執行此腳本定義的完整流程。"""
     print()
     print("==============================")
     print("Experiment 3")

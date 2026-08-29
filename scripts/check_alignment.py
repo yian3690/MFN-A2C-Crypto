@@ -1,3 +1,5 @@
+"""Validate row-by-row alignment among timestamps, raw prices, and engineered features."""
+
 from pathlib import Path
 import pandas as pd
 

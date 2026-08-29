@@ -55,10 +55,12 @@ KLINE_COLUMNS = [
 
 
 def to_ms(date_string: str) -> int:
+    """Convert a UTC date string to the millisecond timestamp required by Binance."""
     return int(pd.Timestamp(date_string).timestamp() * 1000)
 
 
 def request_klines(symbol: str, start_ms: int, end_ms: int) -> list:
+    """Request one paginated Binance K-line batch with retry handling."""
     params = {
         "symbol": symbol,
         "interval": INTERVAL,
@@ -88,6 +90,7 @@ def request_klines(symbol: str, start_ms: int, end_ms: int) -> list:
 
 
 def download_symbol(symbol: str) -> pd.DataFrame:
+    """Download, clean, and persist the complete K-line history for one asset."""
     start_ms = to_ms(START_DATE)
     end_ms = to_ms(END_DATE)
 
@@ -222,6 +225,7 @@ def build_merged_output(dataframes: dict[str, pd.DataFrame]) -> pd.DataFrame:
 
 
 def main() -> None:
+    """主程式入口：依序執行此腳本定義的完整流程。"""
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
     downloaded = {}

@@ -1,3 +1,5 @@
+"""Construct aligned price-change and technical-indicator features from raw K-lines."""
+
 from __future__ import annotations
 from pathlib import Path
 import numpy as np
@@ -12,6 +14,7 @@ ASSETS = ['BTC','ETH','LTC','BNB']
 
 
 def main():
+    """Build the two 16-feature modalities, align them with raw prices, and create train/test splits."""
     if not MERGED.exists():
         raise FileNotFoundError(f'Cannot find {MERGED}. Run download_binance_paper.py first.')
     DATA.mkdir(parents=True, exist_ok=True)

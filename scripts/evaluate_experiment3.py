@@ -1,3 +1,5 @@
+"""Evaluate all reward-function configurations used in Experiment 3."""
+
 import sys
 from pathlib import Path
 
@@ -33,6 +35,7 @@ RESULTS.mkdir(
 
 def make_test_env(reward_type):
 
+    """Create a deterministic held-out environment for one reward setting."""
     raw_test = pd.read_csv(
         DATA / "merged_output_test.csv"
     )
@@ -80,6 +83,7 @@ def make_test_env(reward_type):
 
 def calculate_metrics(result):
 
+    """Calculate the backtest metrics saved in the Experiment 3 summary."""
     pv = (
         result["portfolio_value"]
         .astype(float)
@@ -166,6 +170,7 @@ def evaluate_model(
     output_name,
 ):
 
+    """Load one trained model, backtest it, save its curve, and return its metrics."""
     print()
     print("=" * 70)
     print(
@@ -255,6 +260,7 @@ def evaluate_model(
 
 def main():
 
+    """主程式入口：依序執行此腳本定義的完整流程。"""
     all_metrics = {}
 
     # --------------------------------------------------------

@@ -1,3 +1,5 @@
+"""DQN action adapter: converts a discrete asset choice into portfolio logits."""
+
 import numpy as np
 import gymnasium as gym
 
@@ -14,11 +16,13 @@ class DiscretePortfolioWrapper(gym.ActionWrapper):
     """
 
     def __init__(self, env):
+        """設定 DQN 的五個離散動作與被包裝的交易環境。"""
         super().__init__(env)
 
         self.action_space = gym.spaces.Discrete(5)
 
     def action(self, action):
+        """將選定資產轉為環境 softmax 可辨識的近乎 one-hot logits。"""
         weights = np.zeros(5, dtype=np.float32)
 
         weights[int(action)] = 1.0

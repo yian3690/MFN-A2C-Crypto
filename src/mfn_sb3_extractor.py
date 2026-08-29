@@ -30,6 +30,12 @@ from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 
 
 class TwoViewMFN(BaseFeaturesExtractor):
+    """Convert a two-modal market window into features for A2C.
+
+    This class implements the paper's two-view MFN.  It does not choose
+    portfolio weights itself: SB3 passes its output to the A2C actor and
+    critic, which choose and evaluate the portfolio action.
+    """
     def __init__(
         self,
         observation_space,
@@ -42,6 +48,7 @@ class TwoViewMFN(BaseFeaturesExtractor):
         output_dim: int = 128,
         dropout: float = 0.0,
     ):
+        """建立兩個 LSTM、跨模態注意力、共享記憶閘門及輸出投影層。"""
         super().__init__(observation_space, features_dim=output_dim)
 
         if len(observation_space.shape) != 2:
@@ -62,14 +69,16 @@ class TwoViewMFN(BaseFeaturesExtractor):
         self.hidden = lstm_hidden
         self.memory_dim = memory_dim
 
-        # Two modalities only: the third original MFN modality is removed.
+        # Each modality has its own temporal state.  The paper adapts the
+        # original three-view MFN to price changes and technical indicators.
         self.price_lstm = nn.LSTMCell(price_dim, lstm_hidden)
         self.indicator_lstm = nn.LSTMCell(indicator_dim, lstm_hidden)
 
         # cStar = previous two-view cell states + current two-view cell states
         cstar_dim = 4 * lstm_hidden
 
-        # Attention block: produces an attention vector over cStar.
+        # DMAN-like attention highlights informative changes between the
+        # previous and current two-modality LSTM cell states.
         self.att1 = nn.Linear(cstar_dim, att_hidden)
         self.att2 = nn.Linear(att_hidden, cstar_dim)
 
@@ -77,7 +86,8 @@ class TwoViewMFN(BaseFeaturesExtractor):
         self.att_out1 = nn.Linear(cstar_dim, att_hidden)
         self.att_out2 = nn.Linear(att_hidden, memory_dim)
 
-        # MGM-style gates: previous memory + attended representation.
+        # MGM-like gates retain useful shared memory and write new
+        # cross-modal information at every four-hour step.
         gate_in_dim = cstar_dim + memory_dim
         self.gamma1_1 = nn.Linear(gate_in_dim, gate_hidden)
         self.gamma1_2 = nn.Linear(gate_hidden, memory_dim)
@@ -93,12 +103,15 @@ class TwoViewMFN(BaseFeaturesExtractor):
         self._features_dim = output_dim
 
     def forward(self, observations: torch.Tensor) -> torch.Tensor:
-        # SB3 may provide float32 tensors directly.
+        # SB3 provides (batch, 20 historical steps, 32 features).
+        """將一批歷史市場觀察值編碼成供 A2C 使用的特徵向量。"""
         x = observations.float()
 
         batch_size, timesteps, _ = x.shape
         device = x.device
 
+        # Feature preparation fixes this order: 16 price-change columns,
+        # followed by 16 technical-indicator columns.
         x_price = x[:, :, : self.price_dim]
         x_indicator = x[:, :, self.price_dim :]
 
@@ -110,6 +123,8 @@ class TwoViewMFN(BaseFeaturesExtractor):
 
         memory = torch.zeros(batch_size, self.memory_dim, device=device)
 
+        # Process the history chronologically and update both modality
+        # memories plus the shared MFN memory at each time step.
         for t in range(timesteps):
             prev_c = torch.cat([c_price, c_indicator], dim=1)
 
@@ -144,6 +159,7 @@ class TwoViewMFN(BaseFeaturesExtractor):
 
             memory = gamma1 * memory + gamma2 * candidate
 
+        # The actor/critic receive both final LSTM states and shared memory.
         fused = torch.cat([h_price, h_indicator, memory], dim=1)
         features = self.out1(self.out_dropout(F.relu(fused)))
 

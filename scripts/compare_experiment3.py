@@ -1,3 +1,5 @@
+"""Create the Experiment 3 reward-function comparison table and figure."""
+
 from pathlib import Path
 
 import pandas as pd
@@ -27,6 +29,7 @@ INITIAL_BALANCE = 10000.0
 
 def load_curve(filename):
 
+    """Load and normalize one Experiment 3 portfolio-value result file."""
     path = (
         RESULTS /
         filename
@@ -78,6 +81,7 @@ def load_curve(filename):
 
 def main():
 
+    """主程式入口：依序執行此腳本定義的完整流程。"""
     curves = {
 
         "MFN-A2C + DSR":

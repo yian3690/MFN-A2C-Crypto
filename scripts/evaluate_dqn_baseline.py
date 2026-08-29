@@ -1,3 +1,5 @@
+"""Backtest the discrete-action DQN baseline on the held-out test period."""
+
 import sys
 from pathlib import Path
 
@@ -25,6 +27,7 @@ RESULTS.mkdir(
 
 def main():
 
+    """主程式入口：依序執行此腳本定義的完整流程。"""
     test_raw = pd.read_csv(
         DATA / "merged_output_test.csv"
     )

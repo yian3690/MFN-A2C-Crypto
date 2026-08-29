@@ -1,3 +1,5 @@
+"""Observation wrapper used to remove technical indicators for Experiment 1."""
+
 import numpy as np
 import gymnasium as gym
 
@@ -19,6 +21,7 @@ class PriceOnlyWrapper(gym.ObservationWrapper):
 
     def __init__(self, env, price_dim=16):
 
+        """依價格特徵數量重新宣告只有單一模態的觀察空間。"""
         super().__init__(env)
 
         self.price_dim = price_dim
@@ -50,6 +53,7 @@ class PriceOnlyWrapper(gym.ObservationWrapper):
 
     def observation(self, observation):
 
+        """切出每個時間點的價格變化特徵，丟棄技術指標。"""
         observation = np.asarray(
             observation,
             dtype=np.float32,

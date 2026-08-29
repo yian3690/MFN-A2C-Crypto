@@ -1,3 +1,5 @@
+"""Train the A2C baseline with price-change and technical-indicator inputs but no MFN."""
+
 import sys
 from pathlib import Path
 
@@ -22,6 +24,7 @@ TOTAL_TIMESTEPS = 100_000
 
 def make_env():
 
+    """Create the configured Gymnasium environment used by this script."""
     env = CryptoPortfolioEnv(
         pct_csv=str(
             DATA / "pct_change_output_train.csv"
@@ -52,6 +55,7 @@ def make_env():
 
 
 def main():
+    """主程式入口：依序執行此腳本定義的完整流程。"""
     MODELS.mkdir(parents=True, exist_ok=True)
     (LOGS / "tensorboard").mkdir(parents=True, exist_ok=True)
     CHECKPOINTS.mkdir(parents=True, exist_ok=True)

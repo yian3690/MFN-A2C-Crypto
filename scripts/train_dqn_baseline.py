@@ -1,3 +1,5 @@
+"""Train the discrete-action DQN baseline for Experiment 2."""
+
 import sys
 from pathlib import Path
 
@@ -29,6 +31,7 @@ TOTAL_TIMESTEPS = 100_000
 
 def make_env():
 
+    """Create the configured Gymnasium environment used by this script."""
     env = CryptoPortfolioEnv(
         pct_csv=str(
             DATA / "pct_change_output_train.csv"
@@ -62,6 +65,7 @@ def make_env():
 
 def main():
 
+    """主程式入口：依序執行此腳本定義的完整流程。"""
     env = make_env()
 
     print("Observation space :", env.observation_space)

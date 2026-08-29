@@ -1,3 +1,5 @@
+"""Create the Experiment 2 MFN-A2C, A2C, DQN, and buy-and-hold comparison."""
+
 from pathlib import Path
 
 import pandas as pd
@@ -19,6 +21,7 @@ INITIAL_BALANCE = 10000.0
 
 def load_curve(filename):
 
+    """Load and normalize one Experiment 2 portfolio-value result file."""
     df = pd.read_csv(
         RESULTS / filename
     )
@@ -38,6 +41,7 @@ def load_curve(filename):
 
 def main():
 
+    """主程式入口：依序執行此腳本定義的完整流程。"""
     proposed = load_curve(
         "formal_backtest_results.csv"
     )
