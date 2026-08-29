@@ -1,19 +1,25 @@
+import sys
 from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 
 import pandas as pd
 
 from stable_baselines3 import A2C
 
-from portfolio_env_sb3 import CryptoPortfolioEnv
+from src.portfolio_env_sb3 import CryptoPortfolioEnv
 
 
-ROOT = Path(__file__).resolve().parent
 DATA = ROOT / "data"
+RESULTS = ROOT / "results"
+MODELS = ROOT / "models"
 
 LOOKBACK = 20
 
 
 def main():
+    RESULTS.mkdir(parents=True, exist_ok=True)
 
     test_file = DATA / "pct_change_output_test.csv"
 
@@ -51,7 +57,7 @@ def main():
     model = A2C.load(
 
         str(
-            ROOT / "a2c_baseline"
+            MODELS / "a2c_baseline"
         ),
 
         env=env,
@@ -79,7 +85,7 @@ def main():
     result = env.get_results()
 
     output = (
-        ROOT /
+        RESULTS /
         "a2c_baseline_results.csv"
     )
 

@@ -1,20 +1,26 @@
+import sys
 from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 
 import pandas as pd
 
 from stable_baselines3 import A2C
 
-from portfolio_env_sb3 import CryptoPortfolioEnv
-from price_only_env import PriceOnlyWrapper
+from src.portfolio_env_sb3 import CryptoPortfolioEnv
+from src.price_only_env import PriceOnlyWrapper
 
 
-ROOT = Path(__file__).resolve().parent
 DATA = ROOT / "data"
+RESULTS = ROOT / "results"
+MODELS = ROOT / "models"
 
 LOOKBACK = 20
 
 
 def main():
+    RESULTS.mkdir(parents=True, exist_ok=True)
 
     test_rows = len(
         pd.read_csv(
@@ -63,7 +69,7 @@ def main():
     model = A2C.load(
 
         str(
-            ROOT /
+            MODELS /
             "a2c_without_ti"
         ),
 
@@ -95,7 +101,7 @@ def main():
     result = base_env.get_results()
 
     output = (
-        ROOT /
+        RESULTS /
         "a2c_without_ti_results.csv"
     )
 

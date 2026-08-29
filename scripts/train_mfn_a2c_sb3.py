@@ -10,18 +10,34 @@ For the first test, use a small number of timesteps.
 After the pipeline works, increase it toward the paper's training setting.
 """
 
+
+
+import sys
 from pathlib import Path
 
+# ============================================================
+# Project root
+# ============================================================
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+
+# ============================================================
+# Imports
+# ============================================================
+
 from stable_baselines3 import A2C
-from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.monitor import Monitor
+from stable_baselines3.common.env_checker import check_env
 
-from mfn_sb3_extractor import TwoViewMFN
-from portfolio_env_sb3 import CryptoPortfolioEnv
+from src.mfn_sb3_extractor import TwoViewMFN
+from src.portfolio_env_sb3 import CryptoPortfolioEnv
 
 
-ROOT = Path(__file__).resolve().parent
 DATA = ROOT / "data"
+MODELS = ROOT / "models"
+LOGS = ROOT / "logs"
 
 
 def make_env(training: bool):
@@ -43,6 +59,8 @@ def make_env(training: bool):
 
 
 def main():
+    MODELS.mkdir(parents=True, exist_ok=True)
+    (LOGS / "tensorboard").mkdir(parents=True, exist_ok=True)
     train_env = make_env(training=True)
 
     # Validate Gymnasium interface before training.
@@ -73,7 +91,7 @@ def main():
         verbose=1,
         device="auto",
         seed=123,
-        tensorboard_log=str(ROOT / "tensorboard"),
+        tensorboard_log=str(LOGS / "tensorboard"),
     )
 
     # FIRST TEST:
@@ -83,10 +101,10 @@ def main():
         progress_bar=True
     )
 
-    model.save(str(ROOT / "mfn_a2c_test"))
+    model.save(str(MODELS / "mfn_a2c_test"))
 
     print("\nTraining finished.")
-    print("Saved:", ROOT / "mfn_a2c_test")
+    print("Saved:", MODELS / "mfn_a2c_test")
 
 
 if __name__ == "__main__":
