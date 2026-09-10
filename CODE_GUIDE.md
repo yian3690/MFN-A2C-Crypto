@@ -17,7 +17,7 @@
 
 ## 訓練與實驗
 
-- `train_formal.py` / `evaluate_formal.py`：主方法 MFN-A2C。
+- `train_mfn_a2c.py` / `evaluate_mfn_a2c.py`：主方法 MFN-A2C。
 - `train_a2c_baseline.py` / `evaluate_a2c_baseline.py`：含兩種輸入、但不使用 MFN 的 A2C。
 - `train_a2c_without_ti.py` / `evaluate_a2c_without_ti.py`：僅價格特徵的 A2C，對應實驗 1。
 - `train_dqn_baseline.py` / `evaluate_dqn_baseline.py`：DQN 基準，對應實驗 2。

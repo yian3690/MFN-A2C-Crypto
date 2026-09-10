@@ -24,7 +24,7 @@ LOGS.mkdir(parents=True, exist_ok=True)
 CHECKPOINTS.mkdir(parents=True, exist_ok=True)
 
 
-TOTAL_TIMESTEPS = 100_000
+TOTAL_TIMESTEPS = 1_000_000
 # Formal experiment:
 # TOTAL_TIMESTEPS = 1_800_000
 
@@ -58,6 +58,12 @@ def make_env():
         random_start=True,
     )
 
+
+    """
+    為什麼選 20%，不是 10%？
+    因為 10% 的步長會產生 100 個離散動作，這會導致 DQN 訓練過程中需要更多的探索和學習時間，可能會增加訓練的複雜性和不穩定性。
+    而 20% 的步長會產生 126 個離散動作，這樣的動作空間相對較小，更容易讓 DQN 學習到有效的策略，並且在訓練過程中更穩定。
+    """
     env = DiscretePortfolioWrapper(env)
 
     return Monitor(env)

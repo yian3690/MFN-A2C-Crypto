@@ -19,7 +19,8 @@ LOGS = ROOT / "logs"
 CHECKPOINTS = ROOT / "checkpoints_a2c"
 
 
-TOTAL_TIMESTEPS = 100_000
+#測試先用100000，正式訓練用1,800,000
+TOTAL_TIMESTEPS = 1_000_000
 
 
 def make_env():

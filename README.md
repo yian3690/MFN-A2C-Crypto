@@ -91,8 +91,8 @@ MFN_A2C_Crypto/
 │   ├── download_binance_paper.py
 │   ├── prepare_paper_features.py
 │   ├── check_alignment.py
-│   ├── train_formal.py
-│   ├── evaluate_formal.py
+│   ├── train_mfn_a2c.py
+│   ├── evaluate_mfn_a2c.py
 │   ├── train_a2c_baseline.py
 │   ├── evaluate_a2c_baseline.py
 │   ├── train_a2c_without_ti.py
@@ -191,8 +191,8 @@ Buy-and-Hold
 Train and evaluate the proposed method:
 
 ```powershell
-python scripts\train_formal.py
-python scripts\evaluate_formal.py
+python scripts\train_mfn_a2c.py
+python scripts\evaluate_mfn_a2c.py
 ```
 
 Train and evaluate standard A2C:

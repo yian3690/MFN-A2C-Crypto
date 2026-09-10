@@ -1,37 +1,116 @@
 """DQN action adapter: converts a discrete asset choice into portfolio logits."""
 
-import numpy as np
+import itertools
+
 import gymnasium as gym
+import numpy as np
 
 
 class DiscretePortfolioWrapper(gym.ActionWrapper):
     """
-    Convert discrete DQN action into a 5-asset portfolio weight vector.
+    Convert a discrete DQN action into a portfolio allocation.
 
-    0 -> BTC
-    1 -> ETH
-    2 -> LTC
-    3 -> BNB
-    4 -> USDT
+    Default discretization:
+        weight_step = 0.2
+
+    For 5 assets, this generates 126 valid allocations
+    satisfying:
+
+        w_i >= 0
+        sum(w_i) = 1
     """
 
-    def __init__(self, env):
-        """設定 DQN 的五個離散動作與被包裝的交易環境。"""
+    def __init__(
+        self,
+        env,
+        weight_step=0.2,
+    ):
         super().__init__(env)
 
-        self.action_space = gym.spaces.Discrete(5)
+        self.weight_step = weight_step
+
+        self.n_assets = 5
+
+        # 0.2 -> 5 units
+        self.units = int(
+            round(
+                1.0 / self.weight_step
+            )
+        )
+
+        self.portfolios = (
+            self._generate_portfolios()
+        )
+
+        self.action_space = (
+            gym.spaces.Discrete(
+                len(self.portfolios)
+            )
+        )
+
+        print(
+            "DQN discrete portfolio actions:",
+            len(self.portfolios),
+        )
+
+    def _generate_portfolios(self):
+
+        portfolios = []
+
+        for allocation in itertools.product(
+            range(self.units + 1),
+            repeat=self.n_assets,
+        ):
+
+            if sum(allocation) != self.units:
+                continue
+
+            weights = np.array(
+                allocation,
+                dtype=np.float32,
+            )
+
+            weights /= self.units
+
+            portfolios.append(
+                weights
+            )
+
+        return np.array(
+            portfolios,
+            dtype=np.float32,
+        )
 
     def action(self, action):
-        """將選定資產轉為環境 softmax 可辨識的近乎 one-hot logits。"""
-        weights = np.zeros(5, dtype=np.float32)
 
-        weights[int(action)] = 1.0
+        action = int(action)
 
-        # Existing CryptoPortfolioEnv receives action logits
-        # and applies softmax internally.
-        #
-        # Therefore use a strong logit for selected asset.
-        logits = np.full(5, -10.0, dtype=np.float32)
-        logits[int(action)] = 10.0
+        if (
+            action < 0
+            or action >= len(self.portfolios)
+        ):
+            raise ValueError(
+                f"Invalid DQN action: {action}"
+            )
 
-        return logits
+        weights = (
+            self.portfolios[action]
+        )
+
+        # CryptoPortfolioEnv applies softmax internally.
+        # softmax(log(w)) ~= w.
+        # epsilon prevents log(0).
+
+        eps = 1e-8
+
+        logits = np.log(
+            np.clip(
+                weights,
+                eps,
+                1.0,
+            )
+        )
+
+        return logits.astype(
+            np.float32
+        )
