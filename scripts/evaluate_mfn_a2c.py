@@ -89,7 +89,7 @@ def main():
         max_episode_steps=(
             len(pd.read_csv(
                 DATA / "pct_change_output_test.csv"
-            )) - 20
+            )) - 20 - 1
         ),
 
         reward_type="dsr",

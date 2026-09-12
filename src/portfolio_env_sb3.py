@@ -193,10 +193,15 @@ class CryptoPortfolioEnv(gym.Env):
         )
 
     def step(self, action):
-        # Current observation ends at t.
         """執行一次再平衡、計算下一期報酬與 reward，並前進一根 K 線。"""
-        obs_idx = self.start_idx + self.counter + self.n_previous_timesteps - 1
-        next_idx = obs_idx + 1
+        # 觀測視窗只包含截至 t-1 已完成的 K 線；在 Open[t] 再平衡，
+        # 接著以 Open[t] 到 Open[t+1] 的價格變化計算本期報酬，避免偷看未來。
+        decision_idx = (
+            self.start_idx
+            + self.counter
+            + self.n_previous_timesteps
+        )
+        next_idx = decision_idx + 1
 
         if next_idx >= len(self.price_data):
             raise RuntimeError("Environment reached the end of the dataset.")
@@ -206,7 +211,7 @@ class CryptoPortfolioEnv(gym.Env):
         self.weights = self._softmax(action)
 
         # Four crypto returns from t -> t+1.
-        current_prices = self.price_data[obs_idx]
+        current_prices = self.price_data[decision_idx]
         next_prices = self.price_data[next_idx]
 
         # Use raw Open prices to realise the next-period return.  The model
@@ -253,6 +258,8 @@ class CryptoPortfolioEnv(gym.Env):
             "DSR": dsr,
             "weights": self.weights.copy(),
             "step": self.counter,
+            "decision_idx": decision_idx,
+            "next_idx": next_idx,
         }
 
         if terminated and self.render_mode == "human":

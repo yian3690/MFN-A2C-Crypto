@@ -41,7 +41,7 @@ def make_test_env(reward_type):
     )
 
     max_steps = (
-        len(raw_test) - 20
+        len(raw_test) - 20 - 1
     )
 
     env = CryptoPortfolioEnv(

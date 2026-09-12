@@ -24,7 +24,7 @@ LOGS.mkdir(parents=True, exist_ok=True)
 CHECKPOINTS.mkdir(parents=True, exist_ok=True)
 
 
-TOTAL_TIMESTEPS = 1_000_000
+TOTAL_TIMESTEPS = 6_000_00
 # Formal experiment:
 # TOTAL_TIMESTEPS = 1_800_000
 

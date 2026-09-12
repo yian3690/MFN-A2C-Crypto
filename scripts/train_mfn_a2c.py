@@ -20,8 +20,8 @@ LOGS = ROOT / "logs"
 CHECKPOINTS = ROOT / "checkpoints"
 
 
-#測試先用100000，正式訓練用1,800,000
-TOTAL_TIMESTEPS = 1_000_000
+#測試先用600000，正式訓練用1,800,000
+TOTAL_TIMESTEPS = 6_000_00
 
 
 def make_train_env():

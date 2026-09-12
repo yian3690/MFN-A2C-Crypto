@@ -61,6 +61,8 @@ The repository also includes:
 | Data period | 2018-01-01 to 2025-09-01 |
 | Trading interval | 4 hours |
 | Historical observation window | 20 timesteps |
+| Decision timing | Observe through `t-1`, rebalance at `Open[t]` |
+| Return interval | `Open[t]` to `Open[t+1]` |
 | Technical indicators | SMA-20, EMA-20, MACD(12,26,9), RSI-14 |
 | A2C hidden layers | 2 |
 | Units per A2C layer | 64 |
@@ -177,6 +179,24 @@ python scripts\check_alignment.py
 
 ---
 
+### No-look-ahead time alignment
+
+The environment follows this decision sequence:
+
+```text
+Observation: completed candles [t-20, ..., t-1]
+Decision:    rebalance at Open[t]
+Reward:      portfolio return from Open[t] to Open[t+1]
+```
+
+Features from candle `t` are not included when the action at `Open[t]` is selected. This prevents the agent from using the current candle's Close, High, Low, return, or technical indicators before that candle has completed.
+
+The evaluation scripts use `number_of_rows - lookback - 1` steps because the last decision must still have an available `Open[t+1]`. Buy-and-Hold starts at the same `Open[20]`, so all methods use the same backtest interval.
+
+> Models and checkpoints trained before this time-alignment correction are not valid for the corrected experiment. Train every method again from scratch before comparing results.
+
+---
+
 ## Experiment 1 — Effect of Technical Indicators
 
 Compared methods:
@@ -227,6 +247,23 @@ Typical outputs:
 results/experiment1_comparison.csv
 figures/experiment1_comparison.png
 ```
+
+---
+
+### Verified development result
+
+A corrected single-run MFN-A2C backtest trained for `100_000` timesteps produced the following development result:
+
+| Metric | Value |
+|---|---:|
+| Initial portfolio value | 10,000.00 |
+| Final portfolio value | 13,558.43 |
+| Total return | 35.58% |
+| Peak portfolio value | 14,542.97 |
+| Maximum drawdown | -19.94% |
+| Sharpe ratio | 1.8268 |
+
+This is a short, single-seed development result rather than the final paper result. Formal reporting should use the same settings for every method and summarize multiple random seeds with mean and standard deviation.
 
 ---
 
@@ -365,6 +402,8 @@ Initial portfolio value
 Backtesting interval
 ```
 
+Run at least five random seeds for formal experiments and report the mean and standard deviation. Do not compare a newly corrected model with result CSVs or models produced by the earlier time-leaking environment.
+
 ---
 
 ## Important Notes
@@ -376,6 +415,7 @@ Backtesting interval
 5. DQN uses a discrete action-space adaptation.
 6. `original/` is retained for reference and is not part of the main execution pipeline.
 7. Large model files, checkpoints, TensorBoard logs, and intermediate datasets may be excluded from Git.
+8. Every formal model must be retrained after changes to environment timing or reward calculation.
 
 ---
 

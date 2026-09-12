@@ -33,7 +33,7 @@ def main():
     )
 
     max_steps = (
-        len(test_raw) - 20
+        len(test_raw) - 20 - 1
     )
 
     base_env = CryptoPortfolioEnv(

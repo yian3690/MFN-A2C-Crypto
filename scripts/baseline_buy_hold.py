@@ -22,15 +22,20 @@ def main():
         DATA / "merged_output_test.csv"
     )
 
-    # 4 cryptocurrencies
-    close_columns = [
-        "Close0",
-        "Close1",
-        "Close2",
-        "Close3",
+    # 與 RL 環境採用相同時間軸：先觀察 20 根完整 K 線，再由 Open[20] 進場。
+    open_columns = [
+        "Open0",
+        "Open1",
+        "Open2",
+        "Open3",
     ]
 
-    prices = df[close_columns].astype(float)
+    prices = (
+        df[open_columns]
+        .astype(float)
+        .iloc[20:]
+        .reset_index(drop=True)
+    )
 
     initial_prices = prices.iloc[0]
 

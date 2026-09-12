@@ -46,7 +46,7 @@ def main():
 
         n_previous_timesteps=LOOKBACK,
 
-        max_episode_steps=test_rows - LOOKBACK,
+        max_episode_steps=test_rows - LOOKBACK - 1,
 
         reward_type="dsr",
 

@@ -12,3 +12,10 @@ formal_backtest_results.csv
 formal_metrics.csv
 mfn_vs_buyhold.csv
 *.png
+
+# Track only the retrained formal models; keep old/experimental ZIP files ignored.
+!models/
+models/*
+!models/mfn_a2c_formal.zip
+!models/a2c_baseline.zip
+!models/dqn_baseline.zip
