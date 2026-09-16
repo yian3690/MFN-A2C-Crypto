@@ -10,7 +10,17 @@ import pandas as pd
 
 from stable_baselines3 import A2C
 
+from src.evaluation_metrics import (
+    add_test_timestamps,
+    add_dsr_columns,
+    print_allocation_summary,
+    print_test_period,
+    summarize_allocations,
+    summarize_dsr,
+    validate_test_period,
+)
 from src.portfolio_env_sb3 import CryptoPortfolioEnv
+from src.experiment_periods import PERIODS_PER_YEAR
 
 
 DATA = ROOT / "data"
@@ -25,6 +35,8 @@ def main():
     RESULTS.mkdir(parents=True, exist_ok=True)
 
     test_file = DATA / "pct_change_output_test.csv"
+    test_raw = pd.read_csv(DATA / "merged_output_test.csv")
+    test_period = validate_test_period(test_raw, LOOKBACK)
 
     test_rows = len(
         pd.read_csv(test_file)
@@ -85,7 +97,18 @@ def main():
 
         done = terminated or truncated
 
-    result = env.get_results()
+    result = add_test_timestamps(
+        env.get_results(),
+        test_raw,
+        LOOKBACK,
+    )
+    result = add_dsr_columns(
+        result,
+        eta=env.eta,
+        warmup_steps=env.dsr_warmup_steps,
+    )
+    dsr_metrics = summarize_dsr(result)
+    allocation_metrics = summarize_allocations(result)
 
     output = (
         RESULTS /
@@ -134,7 +157,7 @@ def main():
         sharpe = (
             returns.mean()
             / returns.std()
-            * (6 * 365) ** 0.5
+            * PERIODS_PER_YEAR ** 0.5
         )
 
     else:
@@ -145,6 +168,7 @@ def main():
     print("=" * 60)
     print("A2C BASELINE BACKTEST")
     print("=" * 60)
+    print_test_period(test_period)
 
     print(
         f"Initial PV      : {initial:.2f}"
@@ -170,6 +194,16 @@ def main():
         f"Sharpe Ratio    : {sharpe:.4f}"
     )
 
+    print(
+        f"Peak Cumulative DSR        : {dsr_metrics['Peak Cumulative DSR']:.4f}"
+    )
+
+    print(
+        f"Final Cumulative DSR       : {dsr_metrics['Final Cumulative DSR']:.4f}"
+    )
+
+    print("=" * 60)
+    print_allocation_summary(allocation_metrics)
     print("=" * 60)
 
     env.close()

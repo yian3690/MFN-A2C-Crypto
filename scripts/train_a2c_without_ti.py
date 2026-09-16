@@ -6,10 +6,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from stable_baselines3 import A2C
 from stable_baselines3.common.callbacks import CheckpointCallback
 from stable_baselines3.common.monitor import Monitor
 
+from src.experiment_periods import LOOKBACK
+from src.feature_schema import PRICE_DIM
+from src.multi_epoch_a2c import MultiEpochA2C
 from src.portfolio_env_sb3 import CryptoPortfolioEnv
 from src.price_only_env import PriceOnlyWrapper
 
@@ -19,28 +21,29 @@ MODELS = ROOT / "models"
 LOGS = ROOT / "logs"
 CHECKPOINTS = ROOT / "checkpoints_a2c_without_ti"
 
-TOTAL_TIMESTEPS = 100_000
+TOTAL_TIMESTEPS = 600_000
+UPDATE_EPOCHS = 18
 
 
-def make_env():
+def make_env(paths, *, random_start, max_episode_steps):
 
     """Create the configured Gymnasium environment used by this script."""
     base_env = CryptoPortfolioEnv(
         pct_csv=str(
-            DATA / "pct_change_output_train.csv"
+            paths["pct"]
         ),
 
         ta_csv=str(
-            DATA / "ta_test_train.csv"
+            paths["ta"]
         ),
 
         raw_csv=str(
-            DATA / "merged_output_train.csv"
+            paths["raw"]
         ),
 
-        n_previous_timesteps=20,
+        n_previous_timesteps=LOOKBACK,
 
-        max_episode_steps=540,
+        max_episode_steps=max_episode_steps,
 
         reward_type="dsr",
 
@@ -48,13 +51,13 @@ def make_env():
 
         initial_balance=10000,
 
-        random_start=True,
+        random_start=random_start,
     )
 
     # Remove technical indicators.
     env = PriceOnlyWrapper(
         base_env,
-        price_dim=16,
+        price_dim=PRICE_DIM,
     )
 
     return Monitor(env)
@@ -66,7 +69,16 @@ def main():
     (LOGS / "tensorboard").mkdir(parents=True, exist_ok=True)
     CHECKPOINTS.mkdir(parents=True, exist_ok=True)
 
-    env = make_env()
+    train_paths = {
+        "pct": DATA / "pct_change_output_train.csv",
+        "ta": DATA / "ta_test_train.csv",
+        "raw": DATA / "merged_output_train.csv",
+    }
+    env = make_env(
+        train_paths,
+        random_start=True,
+        max_episode_steps=540,
+    )
 
     print("=" * 60)
     print("A2C WITHOUT TECHNICAL INDICATORS")
@@ -80,14 +92,15 @@ def main():
         f"Total timesteps   : {TOTAL_TIMESTEPS}"
     )
 
-    print("Price features    : 16")
+    print(f"Price features    : {PRICE_DIM}")
     print("Technical features: 0")
     print("MFN               : NO")
     print("Historical window : 20")
-    print("Time interval     : 4H")
+    print("Time interval     : 2H")
     print("DSR eta           : 0.005")
     print("A2C gamma         : 0.99")
     print("A2C n_steps       : 540")
+    print(f"Update epochs     : {UPDATE_EPOCHS}")
     print("Learning rate     : 7e-4")
 
     print("=" * 60)
@@ -100,7 +113,7 @@ def main():
         )
     )
 
-    model = A2C(
+    model = MultiEpochA2C(
 
         policy="MlpPolicy",
 
@@ -111,6 +124,8 @@ def main():
         gamma=0.99,
 
         n_steps=540,
+
+        update_epochs=UPDATE_EPOCHS,
 
         policy_kwargs=policy_kwargs,
 
@@ -126,13 +141,8 @@ def main():
     )
 
     checkpoint_callback = CheckpointCallback(
-
         save_freq=100_000,
-
-        save_path=str(
-            CHECKPOINTS
-        ),
-
+        save_path=str(CHECKPOINTS),
         name_prefix="A2C_without_TI",
     )
 
@@ -145,12 +155,9 @@ def main():
         callback=checkpoint_callback,
     )
 
-    model.save(
-        str(
-            MODELS /
-            "a2c_without_ti"
-        )
-    )
+    output = MODELS / "a2c_without_ti"
+    model.save(str(output))
+    model.save(str(CHECKPOINTS / "A2C_without_TI_600000_final"))
 
     print()
     print("=" * 60)

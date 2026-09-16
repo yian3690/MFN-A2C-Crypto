@@ -11,8 +11,18 @@ sys.path.insert(0, str(ROOT))
 
 from stable_baselines3 import A2C
 
+from src.evaluation_metrics import (
+    add_test_timestamps,
+    add_dsr_columns,
+    print_allocation_summary,
+    print_test_period,
+    summarize_allocations,
+    summarize_dsr,
+    validate_test_period,
+)
 from src.portfolio_env_sb3 import CryptoPortfolioEnv
 from src.mfn_sb3_extractor import TwoViewMFN
+from src.experiment_periods import PERIODS_PER_YEAR
 
 
 # ============================================================
@@ -39,6 +49,7 @@ def make_test_env(reward_type):
     raw_test = pd.read_csv(
         DATA / "merged_output_test.csv"
     )
+    validate_test_period(raw_test, 20)
 
     max_steps = (
         len(raw_test) - 20 - 1
@@ -131,7 +142,7 @@ def calculate_metrics(result):
             returns.std()
             *
             np.sqrt(
-                6 * 365
+                PERIODS_PER_YEAR
             )
         )
 
@@ -217,7 +228,19 @@ def evaluate_model(
             info,
         ) = env.step(action)
 
-    result = env.get_results()
+    raw_test = pd.read_csv(DATA / "merged_output_test.csv")
+    result = add_test_timestamps(
+        env.get_results(),
+        raw_test,
+        20,
+    )
+    result = add_dsr_columns(
+        result,
+        eta=env.eta,
+        warmup_steps=env.dsr_warmup_steps,
+    )
+    dsr_metrics = summarize_dsr(result)
+    allocation_metrics = summarize_allocations(result)
 
     output_path = (
         RESULTS /
@@ -229,11 +252,9 @@ def evaluate_model(
         index=False,
     )
 
-    metrics = (
-        calculate_metrics(
-            result
-        )
-    )
+    metrics = calculate_metrics(result)
+    metrics.update(dsr_metrics)
+    metrics.update(allocation_metrics)
 
     print()
 
@@ -246,6 +267,8 @@ def evaluate_model(
             f"{value:.4f}"
         )
 
+    print()
+    print_allocation_summary(allocation_metrics)
     print()
     print(
         f"Saved: {output_path}"
@@ -261,6 +284,8 @@ def evaluate_model(
 def main():
 
     """主程式入口：依序執行此腳本定義的完整流程。"""
+    raw_test = pd.read_csv(DATA / "merged_output_test.csv")
+    print_test_period(validate_test_period(raw_test, 20))
     all_metrics = {}
 
     # --------------------------------------------------------

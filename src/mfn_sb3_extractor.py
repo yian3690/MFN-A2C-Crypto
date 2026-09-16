@@ -1,10 +1,11 @@
 """
 Two-view MFN feature extractor for Stable-Baselines3.
 
-Paper-aligned design:
+Thesis-equation design:
     Price-change modality  -> LSTMCell
     Technical-indicator modality -> LSTMCell
-    Two-view memory fusion -> attention (DMAN-like) + gated memory (MGM-like)
+    Hidden-state differences -> single-linear DMAN attention
+    Attended changes -> single-linear MGM gates -> shared memory
     Fused representation -> SB3 A2C policy/value networks
 
 The original MFN code uploaded with the project was a 3-view implementation
@@ -12,10 +13,10 @@ with a third modality commented/partially removed. This file implements the
 clean 2-view version directly rather than keeping the half-removed branch.
 
 Input shape expected by SB3:
-    (batch, 20, 32)
+    (batch, 20, 25)
 where:
-    first 16 columns  = 4 assets x 4 price-change features
-    last 16 columns   = 4 assets x 4 technical indicators
+    first 5 columns   = 5 asset price-relative features
+    last 20 columns   = 5 assets x 4 technical indicators
 
 If your CSV columns are arranged differently, adjust split_dims below.
 """
@@ -27,6 +28,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
+from src.feature_schema import INDICATOR_DIM, PRICE_DIM
 
 
 class TwoViewMFN(BaseFeaturesExtractor):
@@ -39,12 +41,10 @@ class TwoViewMFN(BaseFeaturesExtractor):
     def __init__(
         self,
         observation_space,
-        price_dim: int = 16,
-        indicator_dim: int = 16,
+        price_dim: int = PRICE_DIM,
+        indicator_dim: int = INDICATOR_DIM,
         lstm_hidden: int = 64,
         memory_dim: int = 128,
-        att_hidden: int = 64,
-        gate_hidden: int = 64,
         output_dim: int = 128,
         dropout: float = 0.0,
     ):
@@ -74,26 +74,26 @@ class TwoViewMFN(BaseFeaturesExtractor):
         self.price_lstm = nn.LSTMCell(price_dim, lstm_hidden)
         self.indicator_lstm = nn.LSTMCell(indicator_dim, lstm_hidden)
 
-        # cStar = previous two-view cell states + current two-view cell states
-        cstar_dim = 4 * lstm_hidden
+        # Thesis equations 4.5-4.8 concatenate the two modalities' hidden-
+        # state differences: [h_price(t)-h_price(t-1),
+        # h_indicator(t)-h_indicator(t-1)].
+        delta_dim = 2 * lstm_hidden
 
-        # DMAN-like attention highlights informative changes between the
-        # previous and current two-modality LSTM cell states.
-        self.att1 = nn.Linear(cstar_dim, att_hidden)
-        self.att2 = nn.Linear(att_hidden, cstar_dim)
+        # Equation 4.10 writes tanh(attended_delta) directly into memory, so
+        # the attended vector and shared memory must have the same width.
+        if memory_dim != delta_dim:
+            raise ValueError(
+                "Thesis MGM requires memory_dim == 2 * lstm_hidden; "
+                f"got memory_dim={memory_dim} and 2*lstm_hidden={delta_dim}."
+            )
 
-        # Attended cStar -> shared candidate memory.
-        self.att_out1 = nn.Linear(cstar_dim, att_hidden)
-        self.att_out2 = nn.Linear(att_hidden, memory_dim)
+        # Equation 4.7: alpha_t = softmax(W_a * delta_h_t + b_a).
+        self.attention = nn.Linear(delta_dim, delta_dim)
 
-        # MGM-like gates retain useful shared memory and write new
-        # cross-modal information at every four-hour step.
-        gate_in_dim = cstar_dim + memory_dim
-        self.gamma1_1 = nn.Linear(gate_in_dim, gate_hidden)
-        self.gamma1_2 = nn.Linear(gate_hidden, memory_dim)
-
-        self.gamma2_1 = nn.Linear(gate_in_dim, gate_hidden)
-        self.gamma2_2 = nn.Linear(gate_hidden, memory_dim)
+        # Equation 4.9: both gates depend only on the current attended
+        # hidden-state difference c_t.
+        self.retention_gate = nn.Linear(delta_dim, memory_dim)
+        self.update_gate = nn.Linear(delta_dim, memory_dim)
 
         # Final representation sent to SB3 A2C.
         final_dim = 2 * lstm_hidden + memory_dim
@@ -103,15 +103,15 @@ class TwoViewMFN(BaseFeaturesExtractor):
         self._features_dim = output_dim
 
     def forward(self, observations: torch.Tensor) -> torch.Tensor:
-        # SB3 provides (batch, 20 historical steps, 32 features).
+        # SB3 provides (batch, 20 historical steps, 25 features).
         """將一批歷史市場觀察值編碼成供 A2C 使用的特徵向量。"""
         x = observations.float()
 
         batch_size, timesteps, _ = x.shape
         device = x.device
 
-        # Feature preparation fixes this order: 16 price-change columns,
-        # followed by 16 technical-indicator columns.
+        # Feature preparation fixes this order: 5 price-relative columns,
+        # followed by 20 technical-indicator columns.
         x_price = x[:, :, : self.price_dim]
         x_indicator = x[:, :, self.price_dim :]
 
@@ -126,7 +126,8 @@ class TwoViewMFN(BaseFeaturesExtractor):
         # Process the history chronologically and update both modality
         # memories plus the shared MFN memory at each time step.
         for t in range(timesteps):
-            prev_c = torch.cat([c_price, c_indicator], dim=1)
+            prev_h_price = h_price
+            prev_h_indicator = h_indicator
 
             h_price, c_price = self.price_lstm(
                 x_price[:, t, :], (h_price, c_price)
@@ -135,29 +136,26 @@ class TwoViewMFN(BaseFeaturesExtractor):
                 x_indicator[:, t, :], (h_indicator, c_indicator)
             )
 
-            new_c = torch.cat([c_price, c_indicator], dim=1)
-            c_star = torch.cat([prev_c, new_c], dim=1)
-
-            attention_logits = self.att2(
-                F.relu(self.att1(c_star))
+            # Equation 4.5-4.6: delta_h_t contains the adjacent hidden-state
+            # differences from both modalities.
+            delta_h = torch.cat(
+                [
+                    h_price - prev_h_price,
+                    h_indicator - prev_h_indicator,
+                ],
+                dim=1,
             )
+
+            attention_logits = self.attention(delta_h)
             attention = F.softmax(attention_logits, dim=1)
-            attended = attention * c_star
+            attended = attention * delta_h
 
-            candidate = torch.tanh(
-                self.att_out2(F.relu(self.att_out1(attended)))
-            )
+            gamma1 = torch.sigmoid(self.retention_gate(attended))
+            gamma2 = torch.sigmoid(self.update_gate(attended))
 
-            both = torch.cat([attended, memory], dim=1)
-
-            gamma1 = torch.sigmoid(
-                self.gamma1_2(F.relu(self.gamma1_1(both)))
-            )
-            gamma2 = torch.sigmoid(
-                self.gamma2_2(F.relu(self.gamma2_1(both)))
-            )
-
-            memory = gamma1 * memory + gamma2 * candidate
+            # Equation 4.10:
+            # u_t = gamma1 * u_(t-1) + gamma2 * tanh(c_t).
+            memory = gamma1 * memory + gamma2 * torch.tanh(attended)
 
         # The actor/critic receive both final LSTM states and shared memory.
         fused = torch.cat([h_price, h_indicator, memory], dim=1)

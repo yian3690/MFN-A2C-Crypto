@@ -6,10 +6,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from stable_baselines3 import A2C
 from stable_baselines3.common.callbacks import CheckpointCallback
 from stable_baselines3.common.monitor import Monitor
 
+from src.experiment_periods import LOOKBACK
+from src.multi_epoch_a2c import MultiEpochA2C
 from src.portfolio_env_sb3 import CryptoPortfolioEnv
 
 
@@ -19,29 +20,30 @@ LOGS = ROOT / "logs"
 CHECKPOINTS = ROOT / "checkpoints_a2c"
 
 
-#測試先用600000，正式訓練用1,800,000
-TOTAL_TIMESTEPS = 6_000_00
+# Paper comparison run: train for the thesis' reported 1,800,000 steps.
+TOTAL_TIMESTEPS = 600_000
+UPDATE_EPOCHS = 18
 
 
-def make_env():
+def make_env(paths, *, random_start, max_episode_steps):
 
     """Create the configured Gymnasium environment used by this script."""
     env = CryptoPortfolioEnv(
         pct_csv=str(
-            DATA / "pct_change_output_train.csv"
+            paths["pct"]
         ),
 
         ta_csv=str(
-            DATA / "ta_test_train.csv"
+            paths["ta"]
         ),
 
         raw_csv=str(
-            DATA / "merged_output_train.csv"
+            paths["raw"]
         ),
 
-        n_previous_timesteps=20,
+        n_previous_timesteps=LOOKBACK,
 
-        max_episode_steps=540,
+        max_episode_steps=max_episode_steps,
 
         reward_type="dsr",
 
@@ -49,7 +51,7 @@ def make_env():
 
         initial_balance=10000,
 
-        random_start=True,
+        random_start=random_start,
     )
 
     return Monitor(env)
@@ -61,7 +63,16 @@ def main():
     (LOGS / "tensorboard").mkdir(parents=True, exist_ok=True)
     CHECKPOINTS.mkdir(parents=True, exist_ok=True)
 
-    env = make_env()
+    train_paths = {
+        "pct": DATA / "pct_change_output_train.csv",
+        "ta": DATA / "ta_test_train.csv",
+        "raw": DATA / "merged_output_train.csv",
+    }
+    env = make_env(
+        train_paths,
+        random_start=True,
+        max_episode_steps=540,
+    )
 
     policy_kwargs = dict(
 
@@ -71,7 +82,7 @@ def main():
         )
     )
 
-    model = A2C(
+    model = MultiEpochA2C(
 
         policy="MlpPolicy",
 
@@ -82,6 +93,7 @@ def main():
         gamma=0.99,
 
         n_steps=540,
+        update_epochs=UPDATE_EPOCHS,
 
         policy_kwargs=policy_kwargs,
 
@@ -98,9 +110,7 @@ def main():
 
     checkpoint_callback = CheckpointCallback(
         save_freq=100_000,
-        save_path=str(
-            CHECKPOINTS
-        ),
+        save_path=str(CHECKPOINTS),
         name_prefix="A2C",
     )
 
@@ -115,10 +125,11 @@ def main():
     print("MFN             : NO")
     print("Feature extractor: SB3 MLP")
     print("Window          : 20")
-    print("Interval        : 4H")
+    print("Interval        : 2H")
     print("DSR eta         : 0.005")
     print("A2C gamma       : 0.99")
     print("A2C n_steps     : 540")
+    print(f"Update epochs   : {UPDATE_EPOCHS}")
 
     print("=" * 60)
 
@@ -131,9 +142,9 @@ def main():
         callback=checkpoint_callback,
     )
 
-    model.save(
-        str(MODELS / "a2c_baseline")
-    )
+    output = MODELS / "a2c_baseline"
+    model.save(str(output))
+    model.save(str(CHECKPOINTS / f"A2C_{TOTAL_TIMESTEPS}_final"))
 
     print()
     print("=" * 60)

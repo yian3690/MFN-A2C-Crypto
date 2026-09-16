@@ -10,8 +10,19 @@ import pandas as pd
 
 from stable_baselines3 import A2C
 
+from src.evaluation_metrics import (
+    add_test_timestamps,
+    add_dsr_columns,
+    print_allocation_summary,
+    print_test_period,
+    summarize_allocations,
+    summarize_dsr,
+    validate_test_period,
+)
 from src.portfolio_env_sb3 import CryptoPortfolioEnv
 from src.price_only_env import PriceOnlyWrapper
+from src.experiment_periods import PERIODS_PER_YEAR
+from src.feature_schema import PRICE_DIM
 
 
 DATA = ROOT / "data"
@@ -24,6 +35,8 @@ LOOKBACK = 20
 def main():
     """主程式入口：依序執行此腳本定義的完整流程。"""
     RESULTS.mkdir(parents=True, exist_ok=True)
+    test_raw = pd.read_csv(DATA / "merged_output_test.csv")
+    test_period = validate_test_period(test_raw, LOOKBACK)
 
     test_rows = len(
         pd.read_csv(
@@ -66,7 +79,7 @@ def main():
 
     env = PriceOnlyWrapper(
         base_env,
-        price_dim=16,
+        price_dim=PRICE_DIM,
     )
 
     model = A2C.load(
@@ -101,7 +114,18 @@ def main():
             truncated
         )
 
-    result = base_env.get_results()
+    result = add_test_timestamps(
+        base_env.get_results(),
+        test_raw,
+        LOOKBACK,
+    )
+    result = add_dsr_columns(
+        result,
+        eta=base_env.eta,
+        warmup_steps=base_env.dsr_warmup_steps,
+    )
+    dsr_metrics = summarize_dsr(result)
+    allocation_metrics = summarize_allocations(result)
 
     output = (
         RESULTS /
@@ -160,7 +184,7 @@ def main():
             /
             returns.std()
             *
-            (6 * 365) ** 0.5
+            PERIODS_PER_YEAR ** 0.5
         )
 
     else:
@@ -171,6 +195,7 @@ def main():
     print("=" * 60)
     print("A2C WITHOUT TI BACKTEST")
     print("=" * 60)
+    print_test_period(test_period)
 
     print(
         f"Initial PV      : {initial:.2f}"
@@ -193,9 +218,19 @@ def main():
     )
 
     print(
-        f"Sharpe Ratio    : {sharpe:.4f}"
+        f"Sharpe Ratio          : {sharpe:.4f}"
     )
 
+    print(
+        f"Peak Cumulative DSR   : {dsr_metrics['Peak Cumulative DSR']:.4f}"
+    )
+
+    print(
+        f"Final Cumulative DSR  : {dsr_metrics['Final Cumulative DSR']:.4f}"
+    )
+
+    print("=" * 60)
+    print_allocation_summary(allocation_metrics)
     print("=" * 60)
 
     env.close()

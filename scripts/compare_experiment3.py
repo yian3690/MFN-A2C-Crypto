@@ -1,6 +1,7 @@
 """Create the Experiment 3 reward-function comparison table and figure."""
 
 from pathlib import Path
+import sys
 
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -11,6 +12,9 @@ import matplotlib.pyplot as plt
 # ============================================================
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+from src.evaluation_metrics import validate_saved_result_period
 
 RESULTS = ROOT / "results"
 FIGURES = ROOT / "figures"
@@ -42,6 +46,7 @@ def load_curve(filename):
         )
 
     df = pd.read_csv(path)
+    validate_saved_result_period(df)
 
     if (
         "portfolio_value"
@@ -307,7 +312,7 @@ def main():
         )
 
     plt.xlabel(
-        "4-hour timestep"
+        "2-hour timestep"
     )
 
     plt.ylabel(

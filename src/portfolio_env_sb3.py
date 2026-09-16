@@ -5,9 +5,9 @@ This version keeps the user's original idea but fixes the major integration
 points needed by Stable-Baselines3:
 
 - Gymnasium reset()/step() signatures
-- Correct two-view observation shape: 20 x (16 price + 16 indicators)
+- Paper-style two-view observation shape: 20 x (5 price + 20 indicators)
 - 5-asset action: BTC, ETH, LTC, BNB, USDT
-- Portfolio rebalancing at every 4-hour step
+- Portfolio rebalancing at every 2-hour step
 - Optional DSR reward
 - No transaction fee, matching the paper's current environment
 """
@@ -21,17 +21,20 @@ import numpy as np
 import pandas as pd
 from gymnasium import spaces
 
+from src.dsr import DEFAULT_FORMULA, DEFAULT_WARMUP_STEPS, DSRTracker
+from src.feature_schema import INDICATOR_DIM, PORTFOLIO_ASSETS, PRICE_DIM
+
 
 class CryptoPortfolioEnv(gym.Env):
     """Gymnasium market simulator shared by the A2C and MFN-A2C experiments.
 
-    Each step is one four-hour bar.  Five policy logits become non-negative
-    weights for BTC, ETH, LTC, BNB and USDT; USDT is the risk-off asset with
-    a zero return in this simplified paper-aligned environment.
+    Each step is one two-hour bar. In simplex mode the action is already a
+    non-negative, unit-sum weight vector. Legacy logits mode remains
+    available for experiments that have not yet migrated.
     """
     metadata = {"render_modes": ["human"]}
 
-    ASSETS = ["BTC", "ETH", "LTC", "BNB", "USDT"]
+    ASSETS = list(PORTFOLIO_ASSETS)
 
     def __init__(
         self,
@@ -43,7 +46,10 @@ class CryptoPortfolioEnv(gym.Env):
         reward_type: str = "dsr",
         initial_balance: float = 10000.0,
         eta: float = 0.005,
+        dsr_warmup_steps: int = DEFAULT_WARMUP_STEPS,
+        dsr_formula: str = DEFAULT_FORMULA,
         random_start: bool = True,
+        action_mode: str = "logits",
         render_mode: str | None = None,
     ):
         """載入對齊資料，驗證特徵維度，並建立環境狀態與空間。"""
@@ -59,9 +65,15 @@ class CryptoPortfolioEnv(gym.Env):
         self.n_previous_timesteps = n_previous_timesteps
         self.initial_balance = float(initial_balance)
         self.eta = float(eta)
+        self.dsr_warmup_steps = int(dsr_warmup_steps)
+        self.dsr_formula = dsr_formula
         self.reward_type = reward_type.lower()
         self.random_start = random_start
+        self.action_mode = action_mode.lower()
         self.render_mode = render_mode
+
+        if self.action_mode not in {"logits", "simplex"}:
+            raise ValueError("action_mode must be 'logits' or 'simplex'.")
 
         # The paper has 4 crypto assets; USDT is the fifth allocation.
         self.crypto_open_cols = [
@@ -76,18 +88,19 @@ class CryptoPortfolioEnv(gym.Env):
             dtype=np.float64
         )
 
-        # 4 crypto x 4 features = 16; two modalities = 32.
+        # Thesis schema: five price relatives and four indicators per asset.
         self.price_dim = self.pct_data.shape[1]
         self.indicator_dim = self.ta_data.shape[1]
         total_features = self.price_dim + self.indicator_dim
 
-        if self.price_dim != 16:
+        if self.price_dim != PRICE_DIM:
             raise ValueError(
-                f"Expected 16 price-change features (4 x 4), got {self.price_dim}."
+                f"Expected {PRICE_DIM} price-relative features, got {self.price_dim}."
             )
-        if self.indicator_dim != 16:
+        if self.indicator_dim != INDICATOR_DIM:
             raise ValueError(
-                f"Expected 16 technical-indicator features (4 x 4), got {self.indicator_dim}."
+                f"Expected {INDICATOR_DIM} technical-indicator features "
+                f"(5 x 4), got {self.indicator_dim}."
             )
 
         self.observation_space = spaces.Box(
@@ -97,15 +110,25 @@ class CryptoPortfolioEnv(gym.Env):
             dtype=np.float32,
         )
 
-        # A2C's standard continuous action distribution is used.
-        # The environment converts the 5 outputs into portfolio weights
-        # with softmax, matching the user's existing Trader implementation.
-        self.action_space = spaces.Box(
-            low=-5.0,
-            high=5.0,
-            shape=(5,),
-            dtype=np.float32,
-        )
+        if self.action_mode == "simplex":
+            # SimplexActorCriticPolicy samples these weights directly from a
+            # Dirichlet distribution. Box describes per-component bounds;
+            # _validate_simplex_action additionally enforces sum(weights)=1.
+            self.action_space = spaces.Box(
+                low=0.0,
+                high=1.0,
+                shape=(5,),
+                dtype=np.float32,
+            )
+        else:
+            # Backward-compatible mode for A2C experiments that still emit
+            # unconstrained logits and transform them with softmax.
+            self.action_space = spaces.Box(
+                low=-5.0,
+                high=5.0,
+                shape=(5,),
+                dtype=np.float32,
+            )
 
         self.max_episode_steps = (
             max_episode_steps
@@ -121,9 +144,14 @@ class CryptoPortfolioEnv(gym.Env):
         self.return_history: list[float] = []
         self.balance_history: list[float] = []
         self.reward_history: list[float] = []
+        self.weight_history: list[np.ndarray] = []
+        self.turnover_history: list[float] = []
 
-        self.A = 0.0
-        self.B = 0.0
+        self.dsr_tracker = DSRTracker(
+            eta=self.eta,
+            warmup_steps=self.dsr_warmup_steps,
+            formula=self.dsr_formula,
+        )
 
     def _get_obs(self, idx: int) -> np.ndarray:
         """Return the historical window while preserving MFN feature order."""
@@ -133,13 +161,43 @@ class CryptoPortfolioEnv(gym.Env):
 
         return np.concatenate([price_window, ta_window], axis=1)
 
-    def _softmax(self, action: np.ndarray) -> np.ndarray:
-        """Map unconstrained policy logits to valid portfolio weights."""
-        z = np.asarray(action, dtype=np.float64)
-        z = z - np.max(z)
-        exp_z = np.exp(z)
-        weights = exp_z / np.sum(exp_z)
-        return weights
+    def _validate_simplex_action(self, action: np.ndarray) -> np.ndarray:
+        """Validate and normalize only floating-point round-off on weights."""
+        weights = np.asarray(action, dtype=np.float64).reshape(-1)
+        if weights.shape != (len(self.ASSETS),):
+            raise ValueError(
+                f"Expected {len(self.ASSETS)} portfolio weights, "
+                f"got shape {weights.shape}."
+            )
+        if not np.all(np.isfinite(weights)):
+            raise ValueError("Portfolio weights must all be finite.")
+        if np.any(weights < -1e-7) or np.any(weights > 1.0 + 1e-7):
+            raise ValueError("Portfolio weights must be between 0 and 1.")
+
+        total = float(weights.sum())
+        if not np.isclose(total, 1.0, rtol=1e-6, atol=1e-6):
+            raise ValueError(
+                "Portfolio weights must sum to 1; "
+                f"received {total:.9f}."
+            )
+
+        weights = np.clip(weights, 0.0, 1.0)
+        return weights / weights.sum()
+
+    def _action_to_weights(self, action: np.ndarray) -> np.ndarray:
+        """Convert the configured policy action into portfolio weights."""
+        if self.action_mode == "simplex":
+            return self._validate_simplex_action(action)
+
+        logits = np.asarray(action, dtype=np.float64).reshape(-1)
+        if logits.shape != (len(self.ASSETS),):
+            raise ValueError(
+                f"Expected {len(self.ASSETS)} action logits, "
+                f"got shape {logits.shape}."
+            )
+        logits = logits - np.max(logits)
+        exp_logits = np.exp(logits)
+        return exp_logits / exp_logits.sum()
 
     def reset(self, *, seed: int | None = None, options=None):
         """重設資產、DSR 統計量和本回合的起始市場位置。"""
@@ -161,9 +219,10 @@ class CryptoPortfolioEnv(gym.Env):
         self.return_history = []
         self.balance_history = [self.balance]
         self.reward_history = []
+        self.weight_history = [self.weights.copy()]
+        self.turnover_history = []
 
-        self.A = 0.0
-        self.B = 0.0
+        self.dsr_tracker.reset()
 
         obs = self._get_obs(self.start_idx)
         info = {"starting_idx": self.start_idx}
@@ -171,26 +230,8 @@ class CryptoPortfolioEnv(gym.Env):
         return obs, info
 
     def _dsr_reward(self, portfolio_return: float) -> float:
-        """Compute the paper's Differential Sharpe Ratio reward increment."""
-        old_A = self.A
-        old_B = self.B
-
-        # A/B are exponentially weighted first/second moments of returns.
-        # eta=0.005 in the paper controls how quickly DSR adapts.
-        self.A = (1.0 - self.eta) * self.A + self.eta * portfolio_return
-        self.B = (1.0 - self.eta) * self.B + self.eta * (portfolio_return ** 2)
-
-        delta_A = self.A - old_A
-        delta_B = self.B - old_B
-
-        denominator = (old_B - old_A ** 2) ** 1.5
-
-        if old_B <= old_A ** 2 + 1e-12 or denominator <= 1e-12:
-            return 0.0
-
-        return float(
-            (old_B * delta_A - 0.5 * old_A * delta_B) / denominator
-        )
+        """Return one increment from the project's shared DSR tracker."""
+        return self.dsr_tracker.update(portfolio_return)
 
     def step(self, action):
         """執行一次再平衡、計算下一期報酬與 reward，並前進一根 K 線。"""
@@ -208,7 +249,10 @@ class CryptoPortfolioEnv(gym.Env):
 
         # Rebalance for the next interval.  Fees and slippage are omitted,
         # as explicitly assumed by the current paper experiment.
-        self.weights = self._softmax(action)
+        previous_weights = self.weights.copy()
+        self.weights = self._action_to_weights(action)
+        # Half-L1 turnover counts reallocated capital only once.
+        turnover = float(0.5 * np.abs(self.weights - previous_weights).sum())
 
         # Four crypto returns from t -> t+1.
         current_prices = self.price_data[decision_idx]
@@ -224,6 +268,8 @@ class CryptoPortfolioEnv(gym.Env):
 
         self.return_history.append(portfolio_return)
         self.balance_history.append(self.balance)
+        self.weight_history.append(self.weights.copy())
+        self.turnover_history.append(turnover)
 
         dsr = self._dsr_reward(portfolio_return)
 
@@ -256,7 +302,14 @@ class CryptoPortfolioEnv(gym.Env):
             "portfolio_value": float(self.balance),
             "portfolio_return": portfolio_return,
             "DSR": dsr,
+            "dsr_first_moment": self.dsr_tracker.first_moment,
+            "dsr_second_moment": self.dsr_tracker.second_moment,
+            "dsr_variance": (
+                self.dsr_tracker.second_moment
+                - self.dsr_tracker.first_moment**2
+            ),
             "weights": self.weights.copy(),
+            "turnover": turnover,
             "step": self.counter,
             "decision_idx": decision_idx,
             "next_idx": next_idx,
@@ -276,9 +329,14 @@ class CryptoPortfolioEnv(gym.Env):
         )
 
     def get_results(self) -> pd.DataFrame:
-        """整理歷史投資組合價值、報酬與 reward，供評估腳本儲存。"""
-        return pd.DataFrame({
+        """整理績效、配置權重與換手率，供評估腳本儲存。"""
+        result = pd.DataFrame({
             "portfolio_value": self.balance_history,
             "return": [np.nan] + self.return_history,
             "reward": [np.nan] + self.reward_history,
+            "turnover": [np.nan] + self.turnover_history,
         })
+        weights = np.asarray(self.weight_history, dtype=np.float64)
+        for index, asset in enumerate(self.ASSETS):
+            result[f"weight_{asset.lower()}"] = weights[:, index]
+        return result

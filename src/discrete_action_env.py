@@ -1,4 +1,4 @@
-"""DQN action adapter: converts a discrete asset choice into portfolio logits."""
+"""DQN action adapter: converts a discrete choice into simplex weights."""
 
 import itertools
 
@@ -13,23 +13,24 @@ class DiscretePortfolioWrapper(gym.ActionWrapper):
     Default discretization:
         weight_step = 0.2
 
-    For 5 assets, this generates 126 valid allocations
-    satisfying:
-
-        w_i >= 0
-        sum(w_i) = 1
+    For 5 assets, the unconstrained grid contains 126 allocations. With
+    the default 60% cap on BTC/ETH/LTC/BNB, 106 allocations remain. USDT
+    is uncapped so the policy may choose a fully risk-off allocation.
     """
 
     def __init__(
         self,
         env,
         weight_step=0.2,
+        max_crypto_weight=0.6,
     ):
         super().__init__(env)
 
         self.weight_step = weight_step
+        self.max_crypto_weight = float(max_crypto_weight)
 
         self.n_assets = 5
+        self.crypto_asset_count = 4
 
         # 0.2 -> 5 units
         self.units = int(
@@ -52,6 +53,10 @@ class DiscretePortfolioWrapper(gym.ActionWrapper):
             "DQN discrete portfolio actions:",
             len(self.portfolios),
         )
+        print(
+            "DQN maximum crypto weight:",
+            f"{self.max_crypto_weight:.0%}",
+        )
 
     def _generate_portfolios(self):
 
@@ -68,9 +73,15 @@ class DiscretePortfolioWrapper(gym.ActionWrapper):
             weights = np.array(
                 allocation,
                 dtype=np.float32,
-            )
+            ) / self.units
 
-            weights /= self.units
+            # BTC/ETH/LTC/BNB are capped to reduce concentrated risk.
+            # USDT (the final asset) may still reach 100% for risk-off use.
+            if np.any(
+                weights[:self.crypto_asset_count]
+                > self.max_crypto_weight + 1e-8
+            ):
+                continue
 
             portfolios.append(
                 weights
@@ -97,20 +108,6 @@ class DiscretePortfolioWrapper(gym.ActionWrapper):
             self.portfolios[action]
         )
 
-        # CryptoPortfolioEnv applies softmax internally.
-        # softmax(log(w)) ~= w.
-        # epsilon prevents log(0).
-
-        eps = 1e-8
-
-        logits = np.log(
-            np.clip(
-                weights,
-                eps,
-                1.0,
-            )
-        )
-
-        return logits.astype(
+        return weights.astype(
             np.float32
         )

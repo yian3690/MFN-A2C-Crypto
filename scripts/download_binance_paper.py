@@ -1,11 +1,11 @@
 """
-Download the Binance Spot 4-hour K-line data used by the paper.
+Download the Binance Spot 2-hour K-line data used by the paper.
 
 Paper setting:
 - Symbols: BTC, ETH, LTC, BNB against USDT
-- Interval: 4 hours
+- Interval: 2 hours
 - Start: 2018-01-01
-- End: 2025-09-01
+- End (inclusive): 2025-09-01 00:00 UTC
 - The existing project uses four crypto columns + USDT cash.
 
 This script uses Binance's public market-data REST endpoint.
@@ -15,23 +15,30 @@ No API key is required for public K-line data.
 from __future__ import annotations
 
 import time
+import sys
 from pathlib import Path
 
 import pandas as pd
 import requests
 
 
-BASE_URL = "https://api.binance.com/api/v3/klines"
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+from src.experiment_periods import DATA_END_INCLUSIVE, DATA_START
+
+
+BASE_URL = "https://data-api.binance.vision/api/v3/klines"
 
 SYMBOLS = ["BTCUSDT", "ETHUSDT", "LTCUSDT", "BNBUSDT"]
-INTERVAL = "4h"
+INTERVAL = "2h"
 
-# Match the date range in the uploaded binance.py.
-START_DATE = "2018-01-01 00:00:00+00:00"
-END_DATE = "2025-09-01 00:00:00+00:00"
+# Download only the original experiment period.
+START_DATE = DATA_START.isoformat()
+END_DATE = DATA_END_INCLUSIVE.isoformat()
 
-OUT_DIR = Path("data")
-MERGED_FILE = Path("merged_output.csv")
+OUT_DIR = ROOT / "data"
+MERGED_FILE = OUT_DIR / "merged_output.csv"
 
 LIMIT = 1000
 REQUEST_SLEEP = 0.15
@@ -95,7 +102,7 @@ def download_symbol(symbol: str) -> pd.DataFrame:
     end_ms = to_ms(END_DATE)
 
     all_rows = []
-    interval_ms = 4 * 60 * 60 * 1000
+    interval_ms = 2 * 60 * 60 * 1000
 
     print(f"\nDownloading {symbol}: {START_DATE} -> {END_DATE}")
 
@@ -159,7 +166,7 @@ def download_symbol(symbol: str) -> pd.DataFrame:
     df = df.drop_duplicates("Open Time").sort_values("Open Time")
     df = df[
         (df["Open Time"] >= pd.Timestamp(START_DATE))
-        & (df["Open Time"] < pd.Timestamp(END_DATE))
+        & (df["Open Time"] <= pd.Timestamp(END_DATE))
     ].reset_index(drop=True)
 
     symbol_file = OUT_DIR / f"{symbol}.csv"

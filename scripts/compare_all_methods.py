@@ -1,6 +1,7 @@
 """Create the Experiment 1 comparison table and portfolio-value figure."""
 
 from pathlib import Path
+import sys
 
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -11,6 +12,9 @@ import matplotlib.pyplot as plt
 # ============================================================
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+from src.evaluation_metrics import validate_saved_result_period
 
 RESULTS = ROOT / "results"
 FIGURES = ROOT / "figures"
@@ -33,6 +37,7 @@ def load_curve(filename):
         )
 
     df = pd.read_csv(filepath)
+    validate_saved_result_period(df)
 
     if "portfolio_value" not in df.columns:
         raise ValueError(
@@ -68,6 +73,17 @@ def calculate_return(values):
         - 1
     ) * 100
 
+
+def load_cumulative_dsr(filename):
+    """Load explicitly named cumulative DSR metrics from a result CSV."""
+    frame = pd.read_csv(RESULTS / filename)
+    validate_saved_result_period(frame)
+    if "cumulative_dsr" not in frame.columns:
+        raise ValueError(
+            f"{filename} 缺少 cumulative_dsr；請先重新執行對應 evaluator。"
+        )
+    cumulative = pd.to_numeric(frame["cumulative_dsr"], errors="coerce").dropna()
+    return float(cumulative.max()), float(cumulative.iloc[-1])
 
 # ============================================================
 # Main
@@ -211,6 +227,31 @@ def main():
 
     print("=" * 90)
 
+    result_files = {
+        "Proposed Method": "formal_backtest_results.csv",
+        "A2C": "a2c_baseline_results.csv",
+        "A2C w/o TI": "a2c_without_ti_results.csv",
+        "Buy and Hold": "buy_hold_results.csv",
+    }
+    dsr_rows = []
+    print()
+    print("CUMULATIVE DSR")
+    print(f"{'Method':<20}{'Peak Cumulative DSR':>24}{'Final Cumulative DSR':>25}")
+    print("-" * 69)
+    for method, filename in result_files.items():
+        peak_dsr, final_dsr = load_cumulative_dsr(filename)
+        print(f"{method:<20}{peak_dsr:>24.4f}{final_dsr:>25.4f}")
+        dsr_rows.append({
+            "Method": method,
+            "Peak Cumulative DSR": peak_dsr,
+            "Final Cumulative DSR": final_dsr,
+        })
+
+    pd.DataFrame(dsr_rows).to_csv(
+        RESULTS / "experiment1_dsr_metrics.csv",
+        index=False,
+    )
+
     print()
     print(
         f"Comparison timesteps: {n}"
@@ -253,7 +294,7 @@ def main():
     # --------------------------------------------------------
 
     plt.xlabel(
-        "4-hour timestep"
+        "2-hour timestep"
     )
 
     plt.ylabel(

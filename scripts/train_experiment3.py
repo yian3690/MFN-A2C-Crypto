@@ -6,11 +6,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from stable_baselines3 import A2C
 from stable_baselines3.common.monitor import Monitor
 
+from src.multi_epoch_a2c import MultiEpochA2C
 from src.portfolio_env_sb3 import CryptoPortfolioEnv
 from src.mfn_sb3_extractor import TwoViewMFN
+from src.feature_schema import INDICATOR_DIM, PRICE_DIM
 
 
 DATA = ROOT / "data"
@@ -23,26 +24,24 @@ MODELS.mkdir(
 )
 
 
-TOTAL_TIMESTEPS = 100_000
-
-# 正式實驗：
-# TOTAL_TIMESTEPS = 1_800_000
+TOTAL_TIMESTEPS = 600_000
+UPDATE_EPOCHS = 18
 
 
-def make_env(reward_type):
+def make_env(paths, reward_type):
 
     """Create the configured Gymnasium environment used by this script."""
     env = CryptoPortfolioEnv(
         pct_csv=str(
-            DATA / "pct_change_output_train.csv"
+            paths["pct"]
         ),
 
         ta_csv=str(
-            DATA / "ta_test_train.csv"
+            paths["ta"]
         ),
 
         raw_csv=str(
-            DATA / "merged_output_train.csv"
+            paths["raw"]
         ),
 
         n_previous_timesteps=20,
@@ -61,11 +60,12 @@ def make_env(reward_type):
     return Monitor(env)
 
 
-def train_mfn(reward_type):
+def train_mfn(paths, reward_type):
 
     """Train and save the MFN-A2C variant for the selected reward type."""
     env = make_env(
-        reward_type
+        paths,
+        reward_type,
     )
 
     policy_kwargs = dict(
@@ -75,16 +75,12 @@ def train_mfn(reward_type):
 
         features_extractor_kwargs=dict(
 
-            price_dim=16,
-            indicator_dim=16,
+            price_dim=PRICE_DIM,
+            indicator_dim=INDICATOR_DIM,
 
             lstm_hidden=64,
 
             memory_dim=128,
-
-            att_hidden=64,
-
-            gate_hidden=64,
 
             output_dim=128,
 
@@ -97,7 +93,7 @@ def train_mfn(reward_type):
         ),
     )
 
-    model = A2C(
+    model = MultiEpochA2C(
 
         "MlpPolicy",
 
@@ -108,6 +104,8 @@ def train_mfn(reward_type):
         gamma=0.99,
 
         n_steps=540,
+
+        update_epochs=UPDATE_EPOCHS,
 
         policy_kwargs=
             policy_kwargs,
@@ -143,14 +141,15 @@ def train_mfn(reward_type):
     )
 
 
-def train_a2c(reward_type):
+def train_a2c(paths, reward_type):
 
     """Train and save the standard A2C variant for the selected reward type."""
     env = make_env(
-        reward_type
+        paths,
+        reward_type,
     )
 
-    model = A2C(
+    model = MultiEpochA2C(
 
         "MlpPolicy",
 
@@ -161,6 +160,8 @@ def train_a2c(reward_type):
         gamma=0.99,
 
         n_steps=540,
+
+        update_epochs=UPDATE_EPOCHS,
 
         policy_kwargs=dict(
 
@@ -204,6 +205,11 @@ def train_a2c(reward_type):
 def main():
 
     """主程式入口：依序執行此腳本定義的完整流程。"""
+    train_paths = {
+        "pct": DATA / "pct_change_output_train.csv",
+        "ta": DATA / "ta_test_train.csv",
+        "raw": DATA / "merged_output_train.csv",
+    }
     print()
     print("==============================")
     print("Experiment 3")
@@ -213,25 +219,25 @@ def main():
         "Training MFN-A2C + DSR"
     )
 
-    train_mfn("dsr")
+    train_mfn(train_paths, "dsr")
 
     print(
         "Training MFN-A2C + PV"
     )
 
-    train_mfn("pv")
+    train_mfn(train_paths, "pv")
 
     print(
         "Training A2C + DSR"
     )
 
-    train_a2c("dsr")
+    train_a2c(train_paths, "dsr")
 
     print(
         "Training A2C + PV"
     )
 
-    train_a2c("pv")
+    train_a2c(train_paths, "pv")
 
     print()
     print(

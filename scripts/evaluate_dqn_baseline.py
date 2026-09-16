@@ -11,13 +11,24 @@ sys.path.insert(0, str(ROOT))
 
 from stable_baselines3 import DQN
 
+from src.evaluation_metrics import (
+    add_test_timestamps,
+    add_dsr_columns,
+    print_allocation_summary,
+    print_test_period,
+    summarize_allocations,
+    summarize_dsr,
+    validate_test_period,
+)
 from src.portfolio_env_sb3 import CryptoPortfolioEnv
 from src.discrete_action_env import DiscretePortfolioWrapper
+from src.experiment_periods import PERIODS_PER_YEAR
 
 
 DATA = ROOT / "data"
 MODELS = ROOT / "models"
 RESULTS = ROOT / "results"
+MAX_CRYPTO_WEIGHT = 0.60
 
 RESULTS.mkdir(
     parents=True,
@@ -31,6 +42,7 @@ def main():
     test_raw = pd.read_csv(
         DATA / "merged_output_test.csv"
     )
+    test_period = validate_test_period(test_raw, 20)
 
     max_steps = (
         len(test_raw) - 20 - 1
@@ -63,11 +75,14 @@ def main():
 )
 
     env = DiscretePortfolioWrapper(
-        base_env
+        base_env,
+        weight_step=0.2,
+        max_crypto_weight=MAX_CRYPTO_WEIGHT,
     )
 
     model = DQN.load(
         str(MODELS / "dqn_baseline"),
+        env=env,
         device="cpu",
     )
 
@@ -90,7 +105,18 @@ def main():
             terminated or truncated
         )
 
-    result = base_env.get_results()
+    result = add_test_timestamps(
+        base_env.get_results(),
+        test_raw,
+        20,
+    )
+    result = add_dsr_columns(
+        result,
+        eta=base_env.eta,
+        warmup_steps=base_env.dsr_warmup_steps,
+    )
+    dsr_metrics = summarize_dsr(result)
+    allocation_metrics = summarize_allocations(result)
 
     output = (
         RESULTS /
@@ -129,11 +155,11 @@ def main():
 
     if returns.std() > 0:
 
-        # 6 × 365 four-hour periods per year
+        # 12 × 365 two-hour periods per year
         sharpe = (
             returns.mean()
             / returns.std()
-            * np.sqrt(6 * 365)
+            * np.sqrt(PERIODS_PER_YEAR)
         )
 
     else:
@@ -143,6 +169,7 @@ def main():
     print("=" * 60)
     print("DQN BASELINE RESULTS")
     print("=" * 60)
+    print_test_period(test_period)
 
     print(
         f"Initial PV   : {initial:.2f}"
@@ -168,6 +195,16 @@ def main():
         f"Sharpe       : {sharpe:.4f}"
     )
 
+    print(
+        f"Peak Cumulative DSR     : {dsr_metrics['Peak Cumulative DSR']:.4f}"
+    )
+
+    print(
+        f"Final Cumulative DSR    : {dsr_metrics['Final Cumulative DSR']:.4f}"
+    )
+
+    print()
+    print_allocation_summary(allocation_metrics)
     print()
     print(
         f"Saved: {output}"

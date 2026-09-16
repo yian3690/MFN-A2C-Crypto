@@ -2,6 +2,7 @@
 
 import numpy as np
 import gymnasium as gym
+from src.feature_schema import PRICE_DIM
 
 
 class PriceOnlyWrapper(gym.ObservationWrapper):
@@ -19,7 +20,7 @@ class PriceOnlyWrapper(gym.ObservationWrapper):
         MFN is not used because there is only one modality.
     """
 
-    def __init__(self, env, price_dim=16):
+    def __init__(self, env, price_dim=PRICE_DIM):
 
         """依價格特徵數量重新宣告只有單一模態的觀察空間。"""
         super().__init__(env)
@@ -43,7 +44,7 @@ class PriceOnlyWrapper(gym.ObservationWrapper):
                 f"but price_dim={price_dim}."
             )
 
-        # Keep only the first 16 price-change features.
+        # Keep only the first five price-relative features.
         self.observation_space = gym.spaces.Box(
             low=-np.inf,
             high=np.inf,
@@ -60,6 +61,6 @@ class PriceOnlyWrapper(gym.ObservationWrapper):
         )
 
         # Assumption:
-        # first 16 = price-change modality
-        # last 16 = technical-indicator modality
+        # first 5 = price-relative modality
+        # last 20 = technical-indicator modality
         return observation[:, :self.price_dim]
