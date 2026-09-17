@@ -16,7 +16,7 @@ Input shape expected by SB3:
     (batch, 20, 30)
 where:
     first 5 columns   = 5 asset price-relative features
-    last 25 columns   = 5 assets x (4 technical indicators + RS_7D)
+    last 25 columns   = 5 assets x (4 technical indicators + relative strength)
 
 If your CSV columns are arranged differently, adjust split_dims below.
 """

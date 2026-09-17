@@ -27,11 +27,13 @@ from src.experiment_config import (
     RETURN_REWARD_SCALE,
     RUN_TAG,
     TOTAL_TIMESTEPS,
+    VALIDATION_FREQUENCY,
     a2c_algorithm_kwargs,
     make_portfolio_env,
 )
 from src.multi_epoch_a2c import MultiEpochA2C
 from src.training_diagnostics import TrainingDiagnosticsCallback
+from src.validation_callback import ValidationBestModelCallback, read_best_validation
 
 
 CHECKPOINTS = ROOT / "checkpoints_a2c"
@@ -50,14 +52,14 @@ def diagnostics_callback() -> TrainingDiagnosticsCallback:
 
 
 def main():
-    """在完整Development（原Train＋Validation）上訓練固定300k步。"""
+    """只用Train訓練，定期以Validation Final PV選最佳模型。"""
     MODELS.mkdir(parents=True, exist_ok=True)
     (LOGS / "tensorboard").mkdir(parents=True, exist_ok=True)
     CHECKPOINTS.mkdir(parents=True, exist_ok=True)
 
-    # development正是論文所稱的完整Train；獨立Test仍完全保留。
-    env = Monitor(
-        make_portfolio_env("development", action_mode=A2C_ACTION_MODE)
+    env = Monitor(make_portfolio_env("train", action_mode=A2C_ACTION_MODE))
+    validation_env = Monitor(
+        make_portfolio_env("validation", action_mode=A2C_ACTION_MODE)
     )
     model = MultiEpochA2C(
         policy="MlpPolicy",
@@ -69,14 +71,25 @@ def main():
         save_path=str(CHECKPOINTS),
         name_prefix=f"A2C_{RUN_TAG.upper()}",
     )
+    output = MODELS / A2C_MODEL_NAME
+    final_output = MODELS / f"{A2C_MODEL_NAME}_final"
+    validation_log = LOGS / "validation" / f"a2c_baseline_{RUN_TAG}.csv"
+    validation = ValidationBestModelCallback(
+        validation_env,
+        eval_freq=VALIDATION_FREQUENCY,
+        best_model_path=output,
+        log_path=validation_log,
+        reset_log=True,
+    )
 
     print("=" * 60)
-    print("A2C BASELINE - SINGLE-STAGE FULL-TRAIN TRAINING")
+    print("A2C BASELINE - TRAIN/VALIDATION MODEL SELECTION")
     print("=" * 60)
     print(f"Total timesteps : {TOTAL_TIMESTEPS:,}")
-    print("Training data   : complete chronological Train")
-    print("Validation      : disabled")
-    print("Model selection : fixed final 300k model")
+    print("Training data   : chronological Train (31,364 rows)")
+    print("Validation      : independent 1,080 rows")
+    print(f"Validation every: {VALIDATION_FREQUENCY:,} steps")
+    print("Model selection : highest Validation Final PV")
     print(f"Window          : {LOOKBACK} ({LOOKBACK * 2} hours)")
     print("Interval        : 2H")
     print("Feature extractor: SB3 MLP")
@@ -96,16 +109,19 @@ def main():
     model.learn(
         total_timesteps=TOTAL_TIMESTEPS,
         progress_bar=True,
-        callback=[checkpoint, diagnostics_callback()],
+        callback=[checkpoint, diagnostics_callback(), validation],
     )
-    output = MODELS / A2C_MODEL_NAME
-    model.save(str(output))
+    model.save(str(final_output))
+    validation.close()
     env.close()
+    best_pv, best_step = read_best_validation(validation_log)
 
     print()
     print("=" * 60)
-    print("A2C BASELINE SINGLE-STAGE TRAINING FINISHED")
-    print(f"Saved final model: {output}.zip")
+    print("A2C BASELINE VALIDATION SELECTION FINISHED")
+    print(f"Best Validation: step={best_step}, Final PV={best_pv:.2f}")
+    print(f"Saved best model: {output}.zip")
+    print(f"Saved final diagnostic model: {final_output}.zip")
     print("=" * 60)
 
 

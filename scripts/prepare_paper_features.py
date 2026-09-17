@@ -12,7 +12,13 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from src.feature_scaling import FeatureStandardizer
-from src.feature_schema import CRYPTO_ASSETS, INDICATOR_DIM, PRICE_DIM
+from src.feature_schema import (
+    CRYPTO_ASSETS,
+    INDICATOR_DIM,
+    PRICE_DIM,
+    RELATIVE_STRENGTH_BARS,
+    RELATIVE_STRENGTH_NAME,
+)
 from src.experiment_periods import (
     DATA_START,
     EXPECTED_DEVELOPMENT_ROWS,
@@ -28,7 +34,6 @@ from src.experiment_periods import (
 DATA = ROOT / 'data'
 MERGED = DATA / 'merged_output.csv'
 ASSETS = list(CRYPTO_ASSETS)
-RS_7D_BARS = 7 * 24 // 2
 
 
 def main():
@@ -57,17 +62,17 @@ def main():
     for i, asset in enumerate(ASSETS):
         crypto_closes[asset] = pd.to_numeric(raw[f'Close{i}'], errors='coerce')
 
-    # 方案A：以過去7日（84根2小時K線）報酬減去四種加密貨幣的
+    # 方案A：以設定期間的過去報酬減去四種加密貨幣的
     # 同期平均報酬。這是橫截面相對強勢，只使用t及t以前的價格，
     # 不會讀取下一期或Test未來資料。
-    rs_reference = crypto_closes.shift(RS_7D_BARS)
-    # 原始資料從2018-01-01才開始，最前面的84根沒有完整7日歷史。
+    rs_reference = crypto_closes.shift(RELATIVE_STRENGTH_BARS)
+    # 原始資料最前段還沒有完整lookback歷史。
     # 為維持論文33,524筆有效資料，該小段使用「截至當時可取得的
-    # 最長歷史」（第一根Close）作參考；滿84根後一律為固定7日。
+    # 最長歷史」（第一根Close）作參考；滿lookback後改用固定期間。
     # 這個fallback只向後看，不會以未來值補資料。
     rs_reference = rs_reference.fillna(crypto_closes.iloc[0])
-    momentum_7d = crypto_closes / rs_reference - 1.0
-    relative_strength_7d = momentum_7d.sub(momentum_7d.mean(axis=1), axis=0)
+    momentum = crypto_closes / rs_reference - 1.0
+    relative_strength = momentum.sub(momentum.mean(axis=1), axis=0)
 
     for i, asset in enumerate(ASSETS):
         c = pd.to_numeric(raw[f'Close{i}'], errors='coerce')
@@ -93,7 +98,7 @@ def main():
         # 沿用封存原碼的DIF／MACD line；不使用九期signal line。
         tech[f'{asset}_MACD'] = macd['MACD_12_26_9']
         tech[f'{asset}_RSI14'] = rsi
-        tech[f'{asset}_RS_7D'] = relative_strength_7d[asset]
+        tech[f'{asset}_{RELATIVE_STRENGTH_NAME}'] = relative_strength[asset]
 
     # USDT視為無風險資產。下列中性常數經Train-only z-score後皆為0，
     # 因此維持5項資產的一致欄位，不會向模型提供虛假USDT趨勢。
@@ -103,7 +108,7 @@ def main():
     tech['USDT_MACD'] = 0.0
     tech['USDT_RSI14'] = 50.0
     # USDT不參與四種加密貨幣的橫截面排名，設為中性值；經z-score後仍為0。
-    tech['USDT_RS_7D'] = 0.0
+    tech[f'USDT_{RELATIVE_STRENGTH_NAME}'] = 0.0
 
     # THE FIX: join all modalities and raw rows by the SAME timestamp before dropna.
     combined = price.merge(tech, on='Open Time', how='inner', validate='one_to_one')
@@ -227,13 +232,15 @@ def main():
         DATA / 'feature_scaler_development.csv',
         index=False,
     )
-    development_scaler_table.to_csv(DATA / 'feature_scaler.csv', index=False)
+    # 本輪直接使用Validation最佳checkpoint評估Test，不做Stage 2；
+    # 因此正式feature_scaler必須與Train模型一致，只能使用Train統計量。
+    train_scaler_table.to_csv(DATA / 'feature_scaler.csv', index=False)
 
     for split_name, mask, scaled_source in [
         ('train', train_mask, stage1_scaled),
         ('validation', validation_mask, stage1_scaled),
         ('development', development_mask, final_scaled),
-        ('test', test_mask, final_scaled),
+        ('test', test_mask, stage1_scaled),
     ]:
         c = scaled_source.loc[mask].reset_index(drop=True)
         r = aligned_raw.loc[mask].reset_index(drop=True)
@@ -255,10 +262,13 @@ def main():
     print(f'Train period     : {combined.loc[train_mask, "Open Time"].iloc[0]} -> {combined.loc[train_mask, "Open Time"].iloc[-1]}')
     print(f'Validation period: {combined.loc[validation_mask, "Open Time"].iloc[0]} -> {combined.loc[validation_mask, "Open Time"].iloc[-1]}')
     print(f'Test period      : {combined.loc[test_mask, "Open Time"].iloc[0]} -> {combined.loc[test_mask, "Open Time"].iloc[-1]}')
-    print('Feature levels   : SMA / EMA / MACD(DIF) / RSI / RS_7D')
-    print(f'RS_7D lookback   : {RS_7D_BARS} bars (7 days at 2H)')
+    print(f'Feature levels   : SMA / EMA / MACD(DIF) / RSI / {RELATIVE_STRENGTH_NAME}')
+    print(
+        f'{RELATIVE_STRENGTH_NAME} lookback : '
+        f'{RELATIVE_STRENGTH_BARS} bars (14 days at 2H)'
+    )
     print('Stage 1 scaling  : Train-only z-score')
-    print('Stage 2 scaling  : Train+Validation z-score (Test excluded)')
+    print('Test scaling     : Train-only z-score (Validation/Test excluded)')
     print(f'Train scaler     : {DATA / "feature_scaler_train.csv"}')
     print(f'Development scaler: {DATA / "feature_scaler_development.csv"}')
     print('Alignment check  : PASS')

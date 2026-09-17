@@ -107,7 +107,7 @@ class CryptoPortfolioEnv(gym.Env):
         )
 
         # Scheme-A schema: five price relatives and five features per asset
-        # (the paper's four indicators plus the RS_7D ablation feature).
+        # (the paper's four indicators plus one relative-strength feature).
         self.price_dim = self.pct_data.shape[1]
         self.indicator_dim = self.ta_data.shape[1]
         total_features = self.price_dim + self.indicator_dim

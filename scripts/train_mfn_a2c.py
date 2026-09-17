@@ -27,6 +27,7 @@ from src.experiment_config import (
     RETURN_REWARD_SCALE,
     RUN_TAG,
     TOTAL_TIMESTEPS,
+    VALIDATION_FREQUENCY,
     a2c_algorithm_kwargs,
     a2c_policy_kwargs,
     make_portfolio_env,
@@ -35,6 +36,7 @@ from src.feature_schema import INDICATOR_DIM, PRICE_DIM
 from src.mfn_github_extractor import GitHubStyleTwoViewMFN
 from src.multi_epoch_a2c import MultiEpochA2C
 from src.training_diagnostics import TrainingDiagnosticsCallback
+from src.validation_callback import ValidationBestModelCallback, read_best_validation
 
 
 CHECKPOINTS = ROOT / "checkpoints"
@@ -116,14 +118,15 @@ def diagnostics_callback(completed: int) -> TrainingDiagnosticsCallback:
 
 
 def main():
-    """在完整Development上訓練固定300k步，並支援checkpoint續訓。"""
+    """只用Train訓練，以Validation Final PV選模並支援續訓。"""
     args = parse_args()
     MODELS.mkdir(parents=True, exist_ok=True)
     (LOGS / "tensorboard").mkdir(parents=True, exist_ok=True)
     CHECKPOINTS.mkdir(parents=True, exist_ok=True)
 
-    env = Monitor(
-        make_portfolio_env("development", action_mode=A2C_ACTION_MODE)
+    env = Monitor(make_portfolio_env("train", action_mode=A2C_ACTION_MODE))
+    validation_env = Monitor(
+        make_portfolio_env("validation", action_mode=A2C_ACTION_MODE)
     )
     resume_path = (
         find_latest_checkpoint(CHECKPOINTS) if args.resume else None
@@ -146,16 +149,27 @@ def main():
         save_path=str(CHECKPOINTS),
         name_prefix=CHECKPOINT_PREFIX,
     )
+    output = MODELS / MODEL_NAME
+    final_output = MODELS / f"{MODEL_NAME}_final"
+    validation_log = LOGS / "validation" / f"mfn_a2c_{RUN_TAG}.csv"
+    validation = ValidationBestModelCallback(
+        validation_env,
+        eval_freq=VALIDATION_FREQUENCY,
+        best_model_path=output,
+        log_path=validation_log,
+        reset_log=not (args.resume and resume_path is not None),
+    )
 
     print("=" * 60)
-    print("MFN-A2C - SINGLE-STAGE FULL-TRAIN TRAINING")
+    print("MFN-A2C - TRAIN/VALIDATION MODEL SELECTION")
     print("=" * 60)
     print(f"Target steps    : {TOTAL_TIMESTEPS:,}")
     print(f"Completed       : {completed:,}")
     print(f"Remaining       : {remaining:,}")
-    print("Training data   : complete chronological Train")
-    print("Validation      : disabled")
-    print("Model selection : fixed final 300k model")
+    print("Training data   : chronological Train (31,364 rows)")
+    print("Validation      : independent 1,080 rows")
+    print(f"Validation every: {VALIDATION_FREQUENCY:,} steps")
+    print("Model selection : highest Validation Final PV")
     print(f"Gaussian log std: {A2C_LOG_STD_INIT:g} (initial std ~= 0.3679)")
     print(f"Normalize advantage: {A2C_NORMALIZE_ADVANTAGE}")
     print(f"Window          : {LOOKBACK} ({LOOKBACK * 2} hours)")
@@ -172,15 +186,18 @@ def main():
             total_timesteps=remaining,
             reset_num_timesteps=not (args.resume and resume_path),
             progress_bar=True,
-            callback=[checkpoint, diagnostics_callback(completed)],
+            callback=[checkpoint, diagnostics_callback(completed), validation],
         )
-    output = MODELS / MODEL_NAME
-    model.save(str(output))
+    model.save(str(final_output))
+    validation.close()
     env.close()
+    best_pv, best_step = read_best_validation(validation_log)
 
     print()
-    print("MFN-A2C SINGLE-STAGE TRAINING FINISHED")
-    print(f"Saved final model: {output}.zip")
+    print("MFN-A2C VALIDATION SELECTION FINISHED")
+    print(f"Best Validation: step={best_step}, Final PV={best_pv:.2f}")
+    print(f"Saved best model: {output}.zip")
+    print(f"Saved final diagnostic model: {final_output}.zip")
 
 
 if __name__ == "__main__":

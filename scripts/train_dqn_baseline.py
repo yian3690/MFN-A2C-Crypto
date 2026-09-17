@@ -24,27 +24,40 @@ from src.experiment_config import (
     RETURN_REWARD_SCALE,
     RUN_TAG,
     TOTAL_TIMESTEPS,
+    VALIDATION_FREQUENCY,
     dqn_algorithm_kwargs,
     make_portfolio_env,
 )
+from src.validation_callback import ValidationBestModelCallback, read_best_validation
 
 
 CHECKPOINTS = ROOT / "checkpoints_dqn"
 
 
 def main():
-    """在完整Development上訓練固定300k步，Test保持隔離。"""
+    """只用Train訓練，定期以Validation Final PV選最佳模型。"""
     MODELS.mkdir(parents=True, exist_ok=True)
     (LOGS / "tensorboard").mkdir(parents=True, exist_ok=True)
     CHECKPOINTS.mkdir(parents=True, exist_ok=True)
 
     base_env = make_portfolio_env(
-        "development",
+        "train",
         action_mode=DQN_ACTION_MODE,
     )
     env = Monitor(
         DiscretePortfolioWrapper(
             base_env,
+            weight_step=DQN_WEIGHT_STEP,
+            max_crypto_weight=DQN_MAX_CRYPTO_WEIGHT,
+        )
+    )
+    validation_base = make_portfolio_env(
+        "validation",
+        action_mode=DQN_ACTION_MODE,
+    )
+    validation_env = Monitor(
+        DiscretePortfolioWrapper(
+            validation_base,
             weight_step=DQN_WEIGHT_STEP,
             max_crypto_weight=DQN_MAX_CRYPTO_WEIGHT,
         )
@@ -59,14 +72,25 @@ def main():
         save_path=str(CHECKPOINTS),
         name_prefix=f"DQN_{RUN_TAG.upper()}",
     )
+    output = MODELS / DQN_MODEL_NAME
+    final_output = MODELS / f"{DQN_MODEL_NAME}_final"
+    validation_log = LOGS / "validation" / f"dqn_baseline_{RUN_TAG}.csv"
+    validation = ValidationBestModelCallback(
+        validation_env,
+        eval_freq=VALIDATION_FREQUENCY,
+        best_model_path=output,
+        log_path=validation_log,
+        reset_log=True,
+    )
 
     print("=" * 60)
-    print("DQN BASELINE - SINGLE-STAGE FULL-TRAIN TRAINING")
+    print("DQN BASELINE - TRAIN/VALIDATION MODEL SELECTION")
     print("=" * 60)
     print(f"Total timesteps : {TOTAL_TIMESTEPS:,}")
-    print("Training data   : complete chronological Train")
-    print("Validation      : disabled")
-    print("Model selection : fixed final 300k model")
+    print("Training data   : chronological Train (31,364 rows)")
+    print("Validation      : independent 1,080 rows")
+    print(f"Validation every: {VALIDATION_FREQUENCY:,} steps")
+    print("Model selection : highest Validation Final PV")
     print(f"Window          : {LOOKBACK} ({LOOKBACK * 2} hours)")
     print("Observation space:", env.observation_space)
     print("Action space     :", env.action_space)
@@ -78,16 +102,19 @@ def main():
 
     model.learn(
         total_timesteps=TOTAL_TIMESTEPS,
-        callback=checkpoint,
+        callback=[checkpoint, validation],
         progress_bar=True,
     )
-    output = MODELS / DQN_MODEL_NAME
-    model.save(str(output))
+    model.save(str(final_output))
+    validation.close()
     env.close()
+    best_pv, best_step = read_best_validation(validation_log)
 
     print()
-    print("DQN BASELINE SINGLE-STAGE TRAINING FINISHED")
-    print(f"Saved final model: {output}.zip")
+    print("DQN BASELINE VALIDATION SELECTION FINISHED")
+    print(f"Best Validation: step={best_step}, Final PV={best_pv:.2f}")
+    print(f"Saved best model: {output}.zip")
+    print(f"Saved final diagnostic model: {final_output}.zip")
 
 
 if __name__ == "__main__":

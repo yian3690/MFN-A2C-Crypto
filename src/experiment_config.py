@@ -11,6 +11,7 @@ from pathlib import Path
 
 from src.dsr import PAPER_FORMULA
 from src.experiment_periods import LOOKBACK
+from src.feature_schema import RELATIVE_STRENGTH_NAME
 from src.portfolio_env_sb3 import CryptoPortfolioEnv
 
 
@@ -81,12 +82,14 @@ DQN_MAX_CRYPTO_WEIGHT = 0.60
 
 # 特徵版本寫入模型與結果檔名。目前恢復指標level＋Train-only z-score；
 # 學長原碼的senior_ta消融模型與結果仍保留，不會被本輪覆蓋。
-FEATURE_VARIANT = "level_zscore_rs7d"
+FEATURE_VARIANT = (
+    f"level_zscore_{RELATIVE_STRENGTH_NAME.lower().replace('_', '')}"
+)
 STEP_TAG = f"{TOTAL_TIMESTEPS // 1000}k"
 RUN_TAG = (
-    f"fulltrain_{STEP_TAG}_hybrid_dsr200_ret50_win20_"
+    f"valselect_{STEP_TAG}_hybrid_dsr200_ret50_win20_"
     f"gaussian_logstdm1_normadv_e1_"
-    f"{FEATURE_VARIANT}"
+    f"{FEATURE_VARIANT}_val1080_pv100k"
 )
 MFN_MODEL_NAME = f"mfn_a2c_{RUN_TAG}"
 A2C_MODEL_NAME = f"a2c_baseline_{RUN_TAG}"

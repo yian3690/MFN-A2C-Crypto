@@ -46,15 +46,16 @@ class ExperimentConfigTests(unittest.TestCase):
         self.assertTrue(A2C_NORMALIZE_ADVANTAGE)
         self.assertTrue(a2c_algorithm_kwargs()["normalize_advantage"])
         self.assertEqual(a2c_policy_kwargs()["log_std_init"], -1.0)
-        self.assertEqual(FEATURE_VARIANT, "level_zscore_rs7d")
+        self.assertEqual(FEATURE_VARIANT, "level_zscore_rs14d")
         self.assertIn("300k", RUN_TAG)
-        self.assertIn("fulltrain", RUN_TAG)
+        self.assertIn("valselect", RUN_TAG)
         self.assertIn("hybrid_dsr200_ret50", RUN_TAG)
         self.assertIn("win20", RUN_TAG)
         self.assertIn("logstdm1", RUN_TAG)
         self.assertIn("normadv", RUN_TAG)
         self.assertEqual(LOOKBACK, 20)
-        self.assertIn("level_zscore_rs7d", RUN_TAG)
+        self.assertIn("level_zscore_rs14d", RUN_TAG)
+        self.assertIn("val1080_pv100k", RUN_TAG)
 
     def test_data_paths_are_split_consistently(self):
         train = data_paths("train")
@@ -73,17 +74,13 @@ class ExperimentConfigTests(unittest.TestCase):
             data_paths("invalid")
 
     def test_train_environments_are_chronological(self):
-        a2c_env = make_portfolio_env(
-            "development", action_mode=A2C_ACTION_MODE
-        )
-        dqn_env = make_portfolio_env(
-            "development", action_mode=DQN_ACTION_MODE
-        )
+        a2c_env = make_portfolio_env("train", action_mode=A2C_ACTION_MODE)
+        dqn_env = make_portfolio_env("train", action_mode=DQN_ACTION_MODE)
         try:
             self.assertFalse(a2c_env.random_start)
             self.assertFalse(dqn_env.random_start)
-            self.assertEqual(len(a2c_env.raw_data), 32_444)
-            self.assertEqual(len(dqn_env.raw_data), 32_444)
+            self.assertEqual(len(a2c_env.raw_data), 31_364)
+            self.assertEqual(len(dqn_env.raw_data), 31_364)
             self.assertEqual(a2c_env.action_mode, "logits")
             self.assertEqual(dqn_env.action_mode, "simplex")
             self.assertEqual(a2c_env.dsr_formula, PAPER_FORMULA)

@@ -615,3 +615,122 @@ python scripts\compare_experiment3.py
 - 變更原因：RS_7D 600k最後實際跑至600,480步，最後rollout出現Advantage mean 10.523、policy loss 23.182、value loss 144.747，最終LTC平均配置升至48.58%，Final PV降至11,997.98。
 - 新run tag為`fulltrain_300k_hybrid_dsr200_ret50_win20_gaussian_logstdm1_normadv_e1_level_zscore_rs7d`，不覆蓋未標準化Advantage的300k／600k模型、checkpoint、結果與診斷CSV。
 - 此設定是訓練穩定性消融，並非論文表格明確列出的超參數；正式比較時三個A2C方法必須一致使用。
+
+## 34. 2026-09-17：RS_14D與Validation Final-PV選模
+
+- 相對強勢期限由7日改為14日，即168根2小時K線；公式仍為各加密貨幣同期報酬減去BTC／ETH／LTC／BNB平均報酬，USDT為中性0，且只使用當下與過去資料。
+- 原32,444筆pre-Test資料依時間切成Train 31,364筆與Validation 1,080筆；最後1,080筆Test維持完全隔離。正式Scaler只以Train擬合，Validation與Test套用相同統計量。
+- 四種方法最多訓練300,000步，每100,000步完整回測Validation，依Final PV保存最佳checkpoint；evaluate載入最佳Validation模型。訓練結束狀態另存`*_final.zip`供診斷，不覆蓋最佳模型。
+- 本輪不做Stage 2；`normalize_advantage=True`只適用三個A2C系列，DQN維持其原演算法設定。其餘Window 20、Hybrid-50、`eta=0.005`、warm-up 5、A2C rollout 540、epoch 1、`log_std_init=-1`與seed123不變。
+- 新run tag為`valselect_300k_hybrid_dsr200_ret50_win20_gaussian_logstdm1_normadv_e1_level_zscore_rs14d_val1080_pv100k`，與RS_7D full-Train模型、checkpoint、結果及診斷檔完全分離。
+- 資料重建結果：33,524筆有效資料、5個價格特徵、25個指標／相對強勢特徵；Train／Validation／Development／Test逐列對齊全部PASS。42項unittest與未訓練模型的完整Validation smoke backtest通過。
+- 要正式判定RS_7D或RS_14D較佳，RS_7D也必須以完全相同的Train／Validation流程重跑，再比較Validation Final PV；既有RS_7D full-Train結果已看過Validation期間，不能作公平期限選擇。
+
+## 35. A2C baseline 實驗帳本與後續調整依據
+
+本節把先前散落於各章的A2C結果集中整理。所有比較都必須先確認資料期間、特徵、reward、模型選擇方式與seed是否一致；若不一致，只能當作歷史線索，不能直接宣稱某個參數較好。
+
+### 35.1 論文與Buy-and-Hold參考值
+
+| 參考方法 | Peak PV | Final PV | Return | Peak Cum. DSR | Final Cum. DSR | 備註 |
+|---|---:|---:|---:|---:|---:|---|
+| 論文A2C | 14,378 | 13,357 | 33.57% | 0.232 | 0.120 | 僅作重現目標；封存程式、切分與目前流程未完全確認一致 |
+| 目前Test的四幣等權Buy-and-Hold | 待正式輸出 | 約13,011 | 約30.11% | — | — | 2025-06-03至2025-09-01；不含USDT，需以相同lookback的正式baseline輸出為準 |
+
+### 35.2 舊流程結果（不可與目前Validation流程直接混比）
+
+| 實驗 | Steps | Final PV | Return | Peak PV | Max DD | Sharpe | Peak/Final Cum. DSR | 主要差異或觀察 |
+|---|---:|---:|---:|---:|---:|---:|---:|---|
+| 舊4H流程 | 100k | 13,086.66 | 30.87% | 14,168.04 | -20.62% | 1.6397 | — | 4小時資料，不能與目前2H Test直接比較 |
+| 舊4H流程 | 1.0M | 13,721.78 | 37.22% | 14,756.42 | -19.59% | 1.8824 | — | 4小時資料 |
+| 舊4H／600k | 600k | 13,483.44 | 34.83% | 14,516.20 | -20.30% | 1.7645 | 0.1430/0.0570 | 舊特徵與舊切分 |
+| 舊4H／600k調整後 | 600k | 13,156.20 | 31.56% | 13,889.28 | -23.28% | 1.6306 | 0.1688/0.0860 | DSR／環境曾調整 |
+| 舊4H／1.8M | 1.8M | 12,774.87 | 27.75% | 13,404.94 | -24.54% | 1.4360 | 0.1662/0.0941 | 增加步數反而下降 |
+| 2H、無warm-up | 600k | 11,377.80 | 13.78% | 12,243.27 | -12.51% | 1.6553 | 0.2771/0.1377 | 無固定warm-up |
+| 2H、無warm-up | 1.8M | 11,556.01 | 15.56% | 12,285.47 | -10.88% | 1.8988 | 0.3857/0.2549 | 高DSR沒有轉成高PV |
+| 歷史最佳2H、warm-up 5 | 1.8M | 14,882.13 | 48.82% | 16,055.85 | -12.61% | 3.9599 | 0.2764/0.1448 | ETH平均33.36%；舊隨機episode／特徵／reward流程，尚未精確重現 |
+| Legacy 16+16、random540、pure DSR | 1.8M | 11,778.93 | 17.79% | 12,939.17 | -13.04% | 2.0988 | 0.2431/0.0911 | turnover 176.21x，證明照舊輸入並未重現14,882 |
+| Two-stage、Hybrid-50、Window40 | 1.8M | 13,173.26 | 31.73% | 14,515.86 | -13.65% | 3.1838 | 0.0863/-0.0829 | BTC／ETH平均28.21%／25.40%；流程與目前單階段不同 |
+
+### 35.3 目前2H同一Test期間的主要消融
+
+下表皆使用2025-06-03 02:00至2025-09-01 00:00 UTC的Test，但仍須看「設定」欄確認是否能做單變因比較。
+
+| ID | 設定／本輪重點 | Steps | Final PV | Return | Peak PV | Max DD | Sharpe | BTC/ETH/LTC/BNB/USDT平均權重 | 診斷摘要 |
+|---|---|---:|---:|---:|---:|---:|---:|---|---|
+| A01 | 2H完整Train早期版本 | 600k | 13,355.57 | 33.56% | 14,380.80 | -13.32% | 3.1988 | 17.36/28.79/17.12/19.97/16.76% | ETH配置較高；舊reward／特徵版本 |
+| A02 | Legacy expanding cumulative DSR | 600k | 12,002.36 | 20.02% | 12,661.61 | -10.35% | 2.5549 | 28.31/9.82/2.86/44.33/14.68% | DSR接近論文，但Critic不穩且PV低 |
+| A03 | Validation實驗 | 600k | 11,970.66 | 19.71% | 12,981.74 | -12.12% | 2.4579 | 38.06/22.54/6.65/12.29/20.46% | 不同選模流程，不能只用Test判斷Validation無效 |
+| A04 | Hybrid-50 | 300k | 12,520.38 | 25.20% | 13,538.31 | -12.02% | 2.6915 | 20.58/15.04/22.57/27.59/14.21% | 比純風險目標更重視PV |
+| A05 | Hybrid-100 | 300k | 12,507.97 | 25.08% | 13,586.13 | -12.21% | 2.5914 | 17.39/13.24/26.60/30.16/12.61% | 增加return倍率沒有提升Final PV |
+| A06 | Hybrid-50、Gaussian std約1 | 600k | 12,314.40 | 23.14% | 13,656.66 | -12.73% | 2.2088 | 10.35/8.66/40.20/30.01/10.79% | sampled/deterministic gap 29.92%；探索過強 |
+| A07 | `log_std_init=-1`、無RS | 300k | 12,560.05 | 25.60% | 13,616.02 | -12.60% | 2.6256 | 21.13/16.45/21.56/31.18/9.68% | gap 12.36%；EV 0.2494、value/return corr 0.6227 |
+| A08 | RS_7D、未normalize advantage | 300k | 12,467.20 | 24.67% | 13,610.96 | -13.10% | 2.4549 | 17.75/14.90/25.33/33.71/8.31% | 7D rank corr 0.108；EV 0.3221 |
+| A09 | RS_7D、未normalize advantage | 600k | 11,997.98 | 19.98% | 13,500.58 | -13.66% | 1.8272 | 9.35/5.44/48.58/29.89/6.74% | 後期崩向LTC；7D corr 0.008，增加步數惡化 |
+| A10 | RS_7D、`normalize_advantage=True` | 300k | 12,597.24 | 25.97% | 13,705.64 | -12.94% | 2.5109 | 12.25/14.78/27.07/37.37/8.53% | 7D corr 0.162；EV 0.3266，為目前RS_7D較穩版本 |
+| A11 | RS_14D＋Validation選模 | 100k最佳／300k上限 | 13,091.19 | 30.91% | 14,155.03 | -14.81% | 2.9658 | 24.04/37.05/8.63/17.68/12.61% | Validation在100k最佳；ETH貢獻70.48%，7D corr 0.194 |
+
+### 35.4 可以較有把握得到的因果線索
+
+1. **增加steps不保證變好。** RS_7D未標準化Advantage由300k增至600k時，Final PV由12,467.20降至11,997.98，ETH由14.90%降至5.44%，LTC升至48.58%。因此目前問題不是單純「訓練不夠」。
+2. **降低Gaussian探索噪音是有效方向。** `log_std_init=-1`後，sampled／deterministic配置差距約由29.92%降至12%，sampled turnover約由41%降至17%；但比較步數並非完全相同，仍應以相同Validation流程再次驗證。
+3. **Advantage標準化改善RS_7D穩定性。** 在同為300k RS_7D條件下，Final PV由12,467.20升至12,597.24（+130.04），7D rank correlation由0.108升至0.162，且未出現600k後期LTC崩塌。
+4. **RS_7D提高了部分強勢相關性，但尚未提升PV。** 無RS低噪音版本Final PV為12,560.05；RS_7D未標準化版本為12,467.20。加入RS後Critic指標改善，但不代表訊號具有下一期預測力。
+5. **提高log-return倍率沒有幫助。** Hybrid-100相較Hybrid-50，Final PV由12,520.38微降至12,507.97，Sharpe亦下降；目前不建議繼續單純放大return項。
+6. **不能強迫ETH權重作為訓練目標。** Test期間ETH事後漲最多，但用Test的ETH表現調參會造成Test洩漏。應以Validation Final PV與多seed穩定性選模型。
+
+### 35.5 RS_7D與RS_14D的公平判定流程
+
+1. 固定Train 31,364、Validation 1,080、Test 1,080、Train-only scaler、Window 20、Hybrid-50、warm-up 5、`log_std_init=-1`、`normalize_advantage=True`、epoch 1與300k上限。
+2. RS_7D與RS_14D都在100k、200k、300k評估Validation Final PV，僅保存Validation最佳checkpoint。
+3. 至少使用3個seed，例如123、456、789；先比較各seed的Validation最佳PV、平均值與標準差。
+4. 只在期限與checkpoint確定後，各模型對Test評估一次。禁止依Test的ETH權重、Final PV或Sharpe回頭選RS期限。
+5. 若RS_14D只在單一seed領先或平均提升低於約1%，先視為不確定；若平均Validation PV提升且標準差沒有明顯擴大，才採用RS_14D。
+6. 若rank correlation提高但Validation PV下降，代表特徵較會描述「過去強勢」，未必能預測下一期；此時應拒絕該期限。
+
+### 35.6 建議的下一輪順序
+
+1. 先完成目前RS_14D的3-seed Validation實驗，記錄100k／200k／300k各checkpoint的Validation PV。
+2. 把單一常數改回RS_7D，以完全相同Validation流程與相同3個seed重跑。
+3. 再跑「不含RS＋normalize advantage」作為控制組，隔離改善究竟來自RS還是Advantage標準化。
+4. 三組都決定後才做一次Test；若最佳Validation模型仍低於Buy-and-Hold，優先檢查預測訊號與reward，而不是直接增加到600k或1.8M。
+5. 只有在Validation曲線到300k仍持續上升且配置未崩塌時，才延長訓練；若Validation在100k／200k已見頂，就使用早期checkpoint。
+
+### 35.7 每次實驗追加格式
+
+往後每次完成訓練與評估，請在本檔追加一列並保留以下欄位：
+
+```text
+日期／Experiment ID：
+Git commit／branch：
+唯一變更：
+固定不變設定：
+資料切分與Test期間：
+Seed與實際訓練steps：
+Validation 100k／200k／300k PV：
+最佳checkpoint：
+Test Initial／Final／Peak PV、Return、Max DD、Sharpe、Peak／Final Cum. DSR：
+五資產平均／最大權重：
+Turnover、explained variance、value-return correlation、Gaussian std與sampled-deterministic gap：
+12h／1d／3d／7d／14d rank correlation：
+相較控制組的變化：
+結論（接受／拒絕／不確定）：
+下一輪只改的一個變因：
+```
+
+此格式能避免只保存「最好的一次」，也能從數值變化判斷問題位於探索噪音、Critic、reward、相對強勢訊號、過度訓練或模型選擇，而不是反覆憑Test結果調參。
+
+## 36. 2026-09-18：A2C RS_14D＋Validation選模結果
+
+- 設定為RS_14D、Train 31,364筆、Validation 1,080筆、Test 1,080筆、Train-only z-score、Window 20、Hybrid-50、paper-style step DSR×200、log return×50、5-step warm-up、Gaussian `log_std_init=-1`、`normalize_advantage=True`、epoch 1、seed123與300,000步上限。
+- Validation Final PV依序為：100k步11,644.55、200k步11,062.37、300k步10,902.87。100k checkpoint為最佳模型，顯示繼續訓練出現明顯Validation退化；本次Test使用100k最佳checkpoint，而非300k final模型。
+- Test結果：Initial PV 10,000.00、Final PV 13,091.19、Return 30.91%、Peak PV 14,155.03、Max Drawdown -14.81%、Sharpe 2.9658、Peak／Final Cumulative DSR 0.1995／0.0650。
+- 平均配置：BTC 24.04%、ETH 37.05%、LTC 8.63%、BNB 17.68%、USDT 12.61%；BTC＋ETH合計61.09%。Average／Cumulative Turnover為0.96%／10.17x。
+- PnL歸因：ETH +2,178.71 USDT，占總獲利70.48%；BNB +601.89、LTC +351.45、BTC -40.85 USDT。模型成功提高Test期間最強資產ETH的配置，是Final PV改善的主要來源。
+- 相對強勢配置關係為12h 0.070、1d 0.054、3d 0.103、7d 0.194；7日winner／loser平均權重26.17%／16.97%。但事後下一期winner／loser僅19.74%／18.83%，表示模型較能跟隨中期趨勢，尚未證明能預測下一根K線贏家。
+- 相較RS_7D＋normalize advantage的舊full-Train 300k結果，Final PV由12,597.24升至13,091.19（+493.95，約+3.92%），Return增加4.94個百分點，ETH平均權重由14.78%升至37.05%；但兩者模型選擇流程不同，因此只能視為RS_14D的正面訊號，不能作最終因果結論。
+- 相較論文A2C，Final PV低265.81（約-1.99%）、Peak PV低222.97（約-1.55%）、Return低2.66個百分點；Peak／Final Cumulative DSR則低0.0325／0.0550。PV已相當接近論文，DSR仍有尺度或策略路徑差異。
+- 相較目前同期間四幣等權Buy-and-Hold約30.11%，本次Return約高0.80個百分點、Final PV約高80 USDT，屬小幅領先；仍不足以用單一seed斷言穩定勝出。
+- 訓練診斷CSV記錄到完整300k訓練結束，Recent explained variance 0.2561、value/return correlation 0.6178、Gaussian std 0.3694、sampled/deterministic gap 12.14%、reward sign conflict 1.48%、sampled turnover 17.26%。這些recent數值描述300k末段，不是被Test評估的100k最佳checkpoint，後續應按checkpoint分段摘要，避免誤判。
+- NumPy `Mean of empty slice`警告出現在診斷摘要階段，通常表示某個可選診斷欄位全為NaN；本次PV、配置與歸因已完整輸出，沒有證據顯示它影響回測計算，但後續應定位並消除該警告。
+- 結論：本輪結果「有希望但尚未定案」。下一步不是增加steps，而是用相同Validation流程重跑RS_7D與無RS控制組，並對RS_7D、RS_14D至少各跑seed123／456／789；模型期限只看Validation平均PV與穩定性決定，Test不再用於選擇。

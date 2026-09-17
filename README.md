@@ -60,15 +60,15 @@ The repository also includes:
 | Data source | Binance |
 | Downloaded data period | 2018-01-01 to 2025-09-01 00:00 (inclusive), 33,550 raw rows |
 | Valid dataset | 2018-01-03 04:00 to 2025-09-01 00:00, 33,524 rows |
-| Train period | 2018-01-03 04:00 to 2025-06-03 00:00, 32,444 rows |
-| Validation period | Not used by the current single-stage protocol |
+| Train period | 2018-01-03 04:00 to 2025-03-05 00:00, 31,364 rows |
+| Validation period | 2025-03-05 02:00 to 2025-06-03 00:00, 1,080 rows |
 | Test period | 2025-06-03 02:00 to 2025-09-01 00:00, final 1,080 rows |
 | Trading interval | 2 hours |
 | Historical observation window | 20 timesteps (40 hours) |
 | Decision timing | Observe through `t-1`, rebalance at `Open[t]` |
 | Return interval | `Open[t]` to `Open[t+1]` |
-| Input indicators/features | SMA-20, EMA-20, MACD(12,26,9), RSI-14, Scheme-A RS_7D |
-| Feature scaling | Complete-Train/Development-only; Test always excluded |
+| Input indicators/features | SMA-20, EMA-20, MACD(12,26,9), RSI-14, Scheme-A RS_14D |
+| Feature scaling | Train-only; Validation and Test always excluded |
 | A2C hidden layers | 2 |
 | Units per A2C layer | 64 |
 | Learning rate | 7e-4 |
@@ -78,11 +78,11 @@ The repository also includes:
 | Training reward | `200 × step DSR + 50 × log(1 + portfolio return)` (Hybrid-50) |
 | DSR update rate | 0.005 (paper mode uses EWMA moment changes) |
 | DSR warm-up | First 5 steps update EWMA moments but return zero reward |
-| Training timesteps | Fixed 300,000-step final model |
+| Training timesteps | 300,000; validate every 100,000 steps |
 | Initial portfolio value | 10,000 |
 | Transaction fee | 0 |
 
-> All four methods train once on the complete chronological 32,444-row Train/Development set for 300,000 steps. Validation checkpoint selection and Stage 2 are disabled. The final 1,080 Test rows remain untouched until evaluation.
+> All four methods train on the chronological 31,364-row Train split for 300,000 steps. Checkpoints at 100k, 200k, and 300k are evaluated on the independent 1,080-row Validation split; the highest Validation Final PV is saved for the one-time final Test evaluation. There is no Stage 2 retraining.
 
 ---
 
@@ -181,7 +181,7 @@ Generate aligned price-change and technical-indicator features:
 python scripts\prepare_paper_features.py
 ```
 
-此步驟建立5個Close-to-Close price-relative，以及25個SMA/EMA/MACD(DIF)/RSI/RS_7D level特徵。`RS_7D`為各加密貨幣過去7日報酬減去四幣同期平均，只使用當下與過去資料。目前正式單階段流程使用Development scaler產生完整Train與Test特徵；Scaler只用32,444筆Train擬合，不使用Test。
+此步驟建立5個Close-to-Close price-relative，以及25個SMA/EMA/MACD(DIF)/RSI/RS_14D level特徵。`RS_14D`為各加密貨幣過去14日報酬減去四幣同期平均，只使用當下與過去資料。Scaler只用31,364筆Train擬合；Validation與Test套用相同統計量，不參與擬合。
 
 學長原碼的 `senior_ta` 消融版仍保留於 `src/technical_indicators.py` 與實驗歷史中。該版本對 MACD 做 `pct_change() × 100`，因零點穿越產生數百萬等級尖峰，A2C 600,000步結果下降至23.35%報酬，因此不再作為目前正式資料版本。
 
@@ -211,16 +211,17 @@ The evaluation scripts use `number_of_rows - lookback - 1` steps because the las
 
 ### Chronological Train/Test split
 
-The thesis reports 33,524 valid two-hour observations. The current protocol follows its original split: the first 32,444 rows are the complete chronological Train set and the final 1,080 rows are Test. No Validation set participates in training or model selection.
+The thesis reports 33,524 valid two-hour observations. For feature-horizon and checkpoint selection, the original 32,444-row pre-Test period is split chronologically into 31,364 Train rows and 1,080 Validation rows. The final 1,080 rows remain the untouched Test set.
 
 ```text
 All valid:  2018-01-03 04:00 through 2025-09-01 00:00 (33,524 rows)
-Train:      2018-01-03 04:00 through 2025-06-03 00:00 (32,444 rows)
+Train:      2018-01-03 04:00 through 2025-03-05 00:00 (31,364 rows)
+Validation: 2025-03-05 02:00 through 2025-06-03 00:00 (1,080 rows)
 Test:       2025-06-03 02:00 through 2025-09-01 00:00 (1,080 rows)
 First Test trade after lookback: 2025-06-04 18:00 UTC
 ```
 
-All methods use the same single-stage protocol: one chronological run on all 32,444 Train rows for a fixed 300,000 steps. Evaluation loads that final model. Test is excluded from scaling, training, and model selection.
+All methods use the same protocol: train chronologically on 31,364 rows for at most 300,000 steps, evaluate Validation every 100,000 steps, and save the checkpoint with the highest Validation Final PV. Evaluation scripts load that best checkpoint. Test is excluded from scaling, training, horizon choice, and checkpoint selection.
 
 ---
 
@@ -397,7 +398,7 @@ This thesis-equation extractor is retained as a controlled comparison implementa
 
 Current GitHub-style two-view extractor. It uses separate price and indicator LSTM cells, concatenates previous/current cell states, applies a two-layer attention MLP plus Softmax, builds memory through a two-layer candidate MLP, and conditions two-layer retention/update gates on both attended states and previous memory. Final modality hidden states and shared memory are passed directly to SB3 A2C.
 
-The current Scheme-A experiment uses a single-stage fixed-300k protocol on the complete Train set, Gaussian logits plus environment Softmax, `log_std_init=-1` (initial std about 0.368), `normalize_advantage=True`, one optimizer epoch per 540-step rollout, and a 20-step (40-hour) observation window. The input is now 5 price relatives plus 25 level-and-z-score features: the paper's SMA20, EMA20, MACD, and RSI14 plus one past-only cross-asset `RS_7D` feature per asset. Training reward remains `200 × paper-style step DSR + 50 × log(1 + portfolio return)`; reported evaluation DSR remains raw and unscaled. Artifacts use the `fulltrain_300k_hybrid_dsr200_ret50_win20_gaussian_logstdm1_normadv_e1_level_zscore_rs7d` tag. This is an enhancement/ablation and must not be described as the paper's original four-indicator input.
+The current Scheme-A experiment trains for at most 300k steps on Train and selects the 100k/200k/300k checkpoint with the highest Validation Final PV. It uses Gaussian logits plus environment Softmax, `log_std_init=-1` (initial std about 0.368), `normalize_advantage=True`, one optimizer epoch per 540-step rollout, and a 20-step (40-hour) observation window. The input is 5 price relatives plus 25 level-and-z-score features: the paper's four indicators plus one past-only cross-asset `RS_14D` feature per asset. Training reward remains `200 × paper-style step DSR + 50 × log(1 + portfolio return)`; reported evaluation DSR remains raw and unscaled. Artifacts use the `valselect_300k_hybrid_dsr200_ret50_win20_gaussian_logstdm1_normadv_e1_level_zscore_rs14d_val1080_pv100k` tag. This is an enhancement/ablation and must not be described as the paper's original four-indicator input.
 
 ### `src/multi_epoch_a2c.py`
 
@@ -409,7 +410,7 @@ Single EWMA DSR implementation shared by training, evaluation, and Buy-and-Hold.
 
 ### `src/training_diagnostics.py`
 
-The MFN and A2C training scripts write one CSV row per rollout under `logs/training_diagnostics/`. In addition to reward, PV, turnover, allocation and Actor/Critic losses, they record per-asset Gaussian exploration scale, sampled-versus-deterministic allocation distance, Advantage/return-target statistics, Critic target correlation/RMSE, and DSR/log-return sign conflict. MFN additionally exposes extractor parameter/gradient information. Each single-stage run creates one timestamped file.
+The MFN and A2C training scripts write one CSV row per rollout under `logs/training_diagnostics/`. In addition to reward, PV, turnover, allocation and Actor/Critic losses, they record per-asset Gaussian exploration scale, sampled-versus-deterministic allocation distance, Advantage/return-target statistics, Critic target correlation/RMSE, and DSR/log-return sign conflict. MFN additionally exposes extractor parameter/gradient information. Validation scores are saved separately under `logs/validation/`.
 
 All four model evaluators also save per-step `asset_return_*`, `return_contribution_*`, and `pnl_contribution_*` columns. The terminal report shows each underlying asset's compounded return and path-dependent PnL contribution; their PnL total reconciles exactly to `Final PV - Initial PV` in the no-fee environment.
 
@@ -417,7 +418,7 @@ Evaluation also reports whether allocations follow relative strength over 6/12/3
 
 ### Resume an interrupted MFN run
 
-Start a new single-stage run normally:
+Start a new Train/Validation-selection run normally:
 
 ```powershell
 python scripts\train_mfn_a2c.py
