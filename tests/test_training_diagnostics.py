@@ -25,7 +25,7 @@ class TrainingDiagnosticsTests(unittest.TestCase):
             }
         )
         with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "diagnostics.csv"
+            path = Path(directory) / "mfn_a2c_diagnostics.csv"
             frame.to_csv(path, index=False)
             summary, warnings = diagnose_training_file(path)
 
@@ -37,7 +37,28 @@ class TrainingDiagnosticsTests(unittest.TestCase):
         self.assertIn("equal weight", combined)
         self.assertIn("barely changes", combined)
 
+    def test_baseline_does_not_report_mfn_gradient_failure(self):
+        frame = pd.DataFrame(
+            {
+                "timesteps": [540],
+                "reward_std": [1.0],
+                "reward_abs_p99": [2.0],
+                "explained_variance": [0.5],
+                "mfn_gradient_norm": [0.0],
+                "allocation_entropy_mean": [0.8],
+                "policy_equal_weight_l1_mean": [0.2],
+                "policy_weight_temporal_std_mean": [0.02],
+                "turnover_mean": [0.02],
+            }
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "a2c_baseline_diagnostics.csv"
+            frame.to_csv(path, index=False)
+            summary, warnings = diagnose_training_file(path)
+
+        self.assertTrue(pd.isna(summary["mfn_gradient_norm_recent"]))
+        self.assertNotIn("gradients", " ".join(warnings))
+
 
 if __name__ == "__main__":
     unittest.main()
-

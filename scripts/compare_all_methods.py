@@ -15,8 +15,13 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from src.evaluation_metrics import validate_saved_result_period
+from src.experiment_config import (
+    A2C_RESULT_NAME,
+    A2C_WITHOUT_TI_RESULT_NAME,
+    MFN_RESULT_NAME,
+    RESULTS,
+)
 
-RESULTS = ROOT / "results"
 FIGURES = ROOT / "figures"
 
 INITIAL_BALANCE = 10000.0
@@ -101,15 +106,15 @@ def main():
     # --------------------------------------------------------
 
     proposed = load_curve(
-        "formal_backtest_results.csv"
+        MFN_RESULT_NAME
     )
 
     a2c = load_curve(
-        "a2c_baseline_results.csv"
+        A2C_RESULT_NAME
     )
 
     a2c_without_ti = load_curve(
-        "a2c_without_ti_results.csv"
+        A2C_WITHOUT_TI_RESULT_NAME
     )
 
     buy_hold = load_curve(
@@ -228,9 +233,9 @@ def main():
     print("=" * 90)
 
     result_files = {
-        "Proposed Method": "formal_backtest_results.csv",
-        "A2C": "a2c_baseline_results.csv",
-        "A2C w/o TI": "a2c_without_ti_results.csv",
+        "Proposed Method": MFN_RESULT_NAME,
+        "A2C": A2C_RESULT_NAME,
+        "A2C w/o TI": A2C_WITHOUT_TI_RESULT_NAME,
         "Buy and Hold": "buy_hold_results.csv",
     }
     dsr_rows = []

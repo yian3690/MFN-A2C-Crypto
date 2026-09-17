@@ -11,27 +11,38 @@ import pandas as pd
 
 from stable_baselines3 import A2C
 
-from src.dsr import PAPER_FORMULA
 from src.mfn_github_extractor import GitHubStyleTwoViewMFN
+from src.experiment_config import (
+    A2C_ACTION_MODE,
+    DATA,
+    LOGS,
+    MFN_MODEL_NAME,
+    MFN_RESULT_NAME,
+    MODELS,
+    RESULTS,
+    RUN_TAG,
+    make_portfolio_env,
+)
 from src.evaluation_metrics import (
     add_test_timestamps,
     add_dsr_columns,
+    add_strength_alignment_columns,
     print_allocation_summary,
+    print_asset_contribution_summary,
+    print_strength_alignment_summary,
     print_test_period,
     summarize_allocations,
+    summarize_asset_contributions,
     summarize_dsr,
+    summarize_strength_alignment,
     validate_test_period,
 )
-from src.portfolio_env_sb3 import CryptoPortfolioEnv
-from src.simplex_policy import SimplexActorCriticPolicy
-from src.experiment_periods import PERIODS_PER_YEAR
-from src.training_diagnostics import diagnose_training_file, latest_diagnostics
-
-
-DATA = ROOT / "data"
-RESULTS = ROOT / "results"
-MODELS = ROOT / "models"
-LOGS = ROOT / "logs"
+from src.experiment_periods import LOOKBACK, PERIODS_PER_YEAR
+from src.training_diagnostics import (
+    diagnose_training_file,
+    latest_diagnostics,
+    print_training_diagnostics_summary,
+)
 
 
 def calculate_metrics(values):
@@ -81,44 +92,12 @@ def main():
     """主程式入口：依序執行此腳本定義的完整流程。"""
     RESULTS.mkdir(parents=True, exist_ok=True)
     test_raw = pd.read_csv(DATA / "merged_output_test.csv")
-    test_period = validate_test_period(test_raw, 20)
-
-    env = CryptoPortfolioEnv(
-
-        pct_csv=str(
-            DATA / "pct_change_output_test.csv"
-        ),
-
-        ta_csv=str(
-            DATA / "ta_test_test.csv"
-        ),
-
-        raw_csv=str(
-            DATA / "merged_output_test.csv"
-        ),
-
-        n_previous_timesteps=20,
-
-        max_episode_steps=(
-            len(pd.read_csv(
-                DATA / "pct_change_output_test.csv"
-            )) - 20 - 1
-        ),
-
-        reward_type="dsr",
-
-        eta=0.005,
-        dsr_formula=PAPER_FORMULA,
-
-        initial_balance=10000,
-
-        random_start=False,
-        action_mode="simplex",
-    )
+    test_period = validate_test_period(test_raw, LOOKBACK)
+    env = make_portfolio_env("test", action_mode=A2C_ACTION_MODE)
 
     model = A2C.load(
 
-        str(MODELS / "mfn_a2c_github2_5x20_300k_paper_dsr"),
+        str(MODELS / MFN_MODEL_NAME),
 
         env=env,
 
@@ -146,7 +125,7 @@ def main():
     result = add_test_timestamps(
         env.get_results(),
         test_raw,
-        20,
+        LOOKBACK,
     )
     result = add_dsr_columns(
         result,
@@ -154,9 +133,10 @@ def main():
         warmup_steps=env.dsr_warmup_steps,
         formula=env.dsr_formula,
     )
+    result = add_strength_alignment_columns(result)
 
     result.to_csv(
-        RESULTS / "mfn_github2_5x20_300k_paper_dsr_backtest_results.csv",
+        RESULTS / MFN_RESULT_NAME,
         index=False,
     )
 
@@ -166,6 +146,10 @@ def main():
     metrics.update(summarize_dsr(result))
     allocation_metrics = summarize_allocations(result)
     metrics.update(allocation_metrics)
+    contribution_metrics = summarize_asset_contributions(result)
+    metrics.update(contribution_metrics)
+    strength_metrics = summarize_strength_alignment(result)
+    metrics.update(strength_metrics)
 
     print()
     print("=" * 60)
@@ -174,6 +158,9 @@ def main():
     print_test_period(test_period)
 
     for key, value in metrics.items():
+
+        if key in contribution_metrics or key in strength_metrics:
+            continue
 
         if "Return" in key or "Drawdown" in key:
 
@@ -189,27 +176,21 @@ def main():
 
     print("=" * 60)
     print_allocation_summary(allocation_metrics)
+    print_asset_contribution_summary(contribution_metrics)
+    print_strength_alignment_summary(strength_metrics)
     print("=" * 60)
 
     diagnostics_path = latest_diagnostics(
         LOGS / "training_diagnostics",
-        "mfn_a2c_5x20_paper_dsr_300k_*.csv",
+        f"mfn_a2c_{RUN_TAG}_*.csv",
     )
     if diagnostics_path is not None:
         training_summary, warnings = diagnose_training_file(diagnostics_path)
-        print("TRAINING DIAGNOSTICS")
-        print(f"Source CSV                  : {diagnostics_path}")
-        print(f"Recorded rollouts           : {int(training_summary['rollouts'])}")
-        print(f"Recent reward std           : {training_summary['reward_std_recent']:.6g}")
-        print(f"Recent |reward| p99         : {training_summary['reward_abs_p99_recent']:.6g}")
-        print(f"Recent explained variance   : {training_summary['explained_variance_recent']:.4f}")
-        print(f"Recent MFN gradient norm    : {training_summary['mfn_gradient_norm_recent']:.6g}")
-        print(f"Recent allocation entropy   : {training_summary['allocation_entropy_recent']:.4f}")
-        print(f"Recent equal-weight distance: {training_summary['equal_weight_distance_recent']:.4f}")
-        print(f"Recent policy weight change : {training_summary['policy_weight_variation_recent']:.4f}")
-        print("Possible causes:")
-        for warning in warnings:
-            print(f"- {warning}")
+        print_training_diagnostics_summary(
+            diagnostics_path,
+            training_summary,
+            warnings,
+        )
         print("=" * 60)
     else:
         print("Training diagnostics: no matching CSV found.")
@@ -218,7 +199,7 @@ def main():
     pd.DataFrame(
         [metrics]
     ).to_csv(
-        RESULTS / "mfn_github2_5x20_300k_paper_dsr_metrics.csv",
+        RESULTS / MFN_RESULT_NAME.replace("_results.csv", "_metrics.csv"),
         index=False,
     )
 

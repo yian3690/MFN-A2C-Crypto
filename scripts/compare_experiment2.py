@@ -11,8 +11,13 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from src.evaluation_metrics import validate_saved_result_period
+from src.experiment_config import (
+    A2C_RESULT_NAME,
+    DQN_RESULT_NAME,
+    MFN_RESULT_NAME,
+    RESULTS,
+)
 
-RESULTS = ROOT / "results"
 FIGURES = ROOT / "figures"
 
 FIGURES.mkdir(
@@ -59,15 +64,15 @@ def main():
 
     """主程式入口：依序執行此腳本定義的完整流程。"""
     proposed = load_curve(
-        "formal_backtest_results.csv"
+        MFN_RESULT_NAME
     )
 
     a2c = load_curve(
-        "a2c_baseline_results.csv"
+        A2C_RESULT_NAME
     )
 
     dqn = load_curve(
-        "dqn_baseline_results.csv"
+        DQN_RESULT_NAME
     )
 
     buy_hold = load_curve(
@@ -137,9 +142,9 @@ def main():
         )
 
     result_files = {
-        "Proposed Method": "formal_backtest_results.csv",
-        "A2C": "a2c_baseline_results.csv",
-        "DQN": "dqn_baseline_results.csv",
+        "Proposed Method": MFN_RESULT_NAME,
+        "A2C": A2C_RESULT_NAME,
+        "DQN": DQN_RESULT_NAME,
         "Buy and Hold": "buy_hold_results.csv",
     }
     dsr_rows = []

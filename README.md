@@ -60,28 +60,29 @@ The repository also includes:
 | Data source | Binance |
 | Downloaded data period | 2018-01-01 to 2025-09-01 00:00 (inclusive), 33,550 raw rows |
 | Valid dataset | 2018-01-03 04:00 to 2025-09-01 00:00, 33,524 rows |
-| Train period | First 32,444 valid rows; through 2025-06-03 00:00 |
-| Validation | None |
+| Train period | 2018-01-03 04:00 to 2025-06-03 00:00, 32,444 rows |
+| Validation period | Not used by the current single-stage protocol |
 | Test period | 2025-06-03 02:00 to 2025-09-01 00:00, final 1,080 rows |
 | Trading interval | 2 hours |
 | Historical observation window | 20 timesteps (40 hours) |
 | Decision timing | Observe through `t-1`, rebalance at `Open[t]` |
 | Return interval | `Open[t]` to `Open[t+1]` |
-| Technical indicators | SMA-20, EMA-20, MACD(12,26,9), RSI-14 |
-| Feature scaling | Per-column z-score fitted on Train only |
+| Input indicators/features | SMA-20, EMA-20, MACD(12,26,9), RSI-14, Scheme-A RS_7D |
+| Feature scaling | Complete-Train/Development-only; Test always excluded |
 | A2C hidden layers | 2 |
 | Units per A2C layer | 64 |
 | Learning rate | 7e-4 |
 | Discount factor | 0.99 |
 | Steps per rollout | 540 |
-| Optimizer updates per rollout | 18 |
+| Optimizer updates per rollout | Current fair comparison: 1; thesis table: 18 |
+| Training reward | `200 × step DSR + 50 × log(1 + portfolio return)` (Hybrid-50) |
 | DSR update rate | 0.005 (paper mode uses EWMA moment changes) |
 | DSR warm-up | First 5 steps update EWMA moments but return zero reward |
-| Training timesteps | Current A2C warm-up comparison: 1,800,000; final model is used |
+| Training timesteps | Fixed 300,000-step final model |
 | Initial portfolio value | 10,000 |
 | Transaction fee | 0 |
 
-> This configuration has no Validation selection. The current A2C warm-up comparison saves the final model after 1,800,000 steps. GitHub-style two-view MFN-A2C is temporarily configured for a 300,000-step, one-update-epoch, 5+20-feature diagnostic; A2C without TI and DQN retain their own current step settings.
+> All four methods train once on the complete chronological 32,444-row Train/Development set for 300,000 steps. Validation checkpoint selection and Stage 2 are disabled. The final 1,080 Test rows remain untouched until evaluation.
 
 ---
 
@@ -180,7 +181,9 @@ Generate aligned price-change and technical-indicator features:
 python scripts\prepare_paper_features.py
 ```
 
-此步驟依論文式 4.2 建立五個 Close-to-Close price-relative 特徵，並建立每項資產的 SMA-20、EMA-20、MACD DIF 與 RSI-14，共 20 個技術指標特徵。四個 USDT 指標為中性常數，標準化後為 0。MACD 採封存原碼使用的 `MACD_12_26_9`（DIF/MACD line），而非九期 signal line。依論文保留最新 33,524 筆有效資料，前 32,444 筆為 Train、最後 1,080 筆為 Test。每欄 z-score 的 mean/std 只由 Train 計算；Test 僅套用同一組參數，統計量會存於 `data/feature_scaler.csv`。特徵處理改變後，既有模型與結果不可混用，必須重新訓練與評估。
+此步驟建立5個Close-to-Close price-relative，以及25個SMA/EMA/MACD(DIF)/RSI/RS_7D level特徵。`RS_7D`為各加密貨幣過去7日報酬減去四幣同期平均，只使用當下與過去資料。目前正式單階段流程使用Development scaler產生完整Train與Test特徵；Scaler只用32,444筆Train擬合，不使用Test。
+
+學長原碼的 `senior_ta` 消融版仍保留於 `src/technical_indicators.py` 與實驗歷史中。該版本對 MACD 做 `pct_change() × 100`，因零點穿越產生數百萬等級尖峰，A2C 600,000步結果下降至23.35%報酬，因此不再作為目前正式資料版本。
 
 Check alignment:
 
@@ -208,17 +211,16 @@ The evaluation scripts use `number_of_rows - lookback - 1` steps because the las
 
 ### Chronological Train/Test split
 
-The thesis reports 33,524 valid two-hour observations. The first 32,444 rows are used for training and the final 1,080 rows are held out for Test. There is no Validation split. Public Binance archives may include a few additional early candles, so preprocessing retains the most recent 33,524 aligned observations to reproduce the reported row counts and fixed final Test period.
+The thesis reports 33,524 valid two-hour observations. The current protocol follows its original split: the first 32,444 rows are the complete chronological Train set and the final 1,080 rows are Test. No Validation set participates in training or model selection.
 
 ```text
 All valid:  2018-01-03 04:00 through 2025-09-01 00:00 (33,524 rows)
 Train:      2018-01-03 04:00 through 2025-06-03 00:00 (32,444 rows)
-Validation: none
 Test:       2025-06-03 02:00 through 2025-09-01 00:00 (1,080 rows)
 First Test trade after lookback: 2025-06-04 18:00 UTC
 ```
 
-All methods train on the same 32,444 Train rows. GitHub-style two-view MFN-A2C currently uses a temporary 300,000-step 5+20-feature diagnostic. MFN keeps `n_steps=540` for rollout collection but treats the complete chronological Train set as one episode, so DSR moments persist across rollouts. Periodic checkpoints are diagnostic only. Test is excluded from scaling and training and must not be used to choose a checkpoint.
+All methods use the same single-stage protocol: one chronological run on all 32,444 Train rows for a fixed 300,000 steps. Evaluation loads that final model. Test is excluded from scaling, training, and model selection.
 
 ---
 
@@ -230,6 +232,7 @@ Compared methods:
 Proposed MFN-A2C
 A2C
 A2C without Technical Indicators
+
 Buy-and-Hold
 ```
 
@@ -288,7 +291,7 @@ A corrected single-run MFN-A2C backtest trained for `100_000` timesteps produced
 | Maximum drawdown | -19.94% |
 | Sharpe ratio | 1.8268 |
 
-This is an older four-hour, `100_000`-step single-seed development result, rather than the current two-hour, `600_000`-step paper-reproduction setting. It is not directly comparable with newly retrained models. Formal reporting should use the same settings for every method and summarize multiple random seeds with mean and standard deviation.
+This is an older four-hour, `100_000`-step single-seed development result, rather than the current two-hour, `300_000`-step fair-comparison setting. It is not directly comparable with newly retrained models. Formal reporting should use the same settings for every method and summarize multiple random seeds with mean and standard deviation.
 
 ---
 
@@ -394,7 +397,7 @@ This thesis-equation extractor is retained as a controlled comparison implementa
 
 Current GitHub-style two-view extractor. It uses separate price and indicator LSTM cells, concatenates previous/current cell states, applies a two-layer attention MLP plus Softmax, builds memory through a two-layer candidate MLP, and conditions two-layer retention/update gates on both attended states and previous memory. Final modality hidden states and shared memory are passed directly to SB3 A2C.
 
-The current paper-reproduction run uses 300,000 timesteps, a complete chronological Train episode, one optimizer epoch per 540-step rollout, the 5-price + 20-indicator input schema, and the archived paper-style EWMA moment-change DSR. It uses the `MFN_A2C_GITHUB2_5X20_PAPER_DSR_E1_300K_*` checkpoint prefix and saves the evaluation model as `models/mfn_a2c_github2_5x20_300k_paper_dsr.zip`; the thesis-reported setting remains 18 update epochs.
+The current Scheme-A experiment uses a single-stage fixed-300k protocol on the complete Train set, Gaussian logits plus environment Softmax, `log_std_init=-1` (initial std about 0.368), `normalize_advantage=True`, one optimizer epoch per 540-step rollout, and a 20-step (40-hour) observation window. The input is now 5 price relatives plus 25 level-and-z-score features: the paper's SMA20, EMA20, MACD, and RSI14 plus one past-only cross-asset `RS_7D` feature per asset. Training reward remains `200 × paper-style step DSR + 50 × log(1 + portfolio return)`; reported evaluation DSR remains raw and unscaled. Artifacts use the `fulltrain_300k_hybrid_dsr200_ret50_win20_gaussian_logstdm1_normadv_e1_level_zscore_rs7d` tag. This is an enhancement/ablation and must not be described as the paper's original four-indicator input.
 
 ### `src/multi_epoch_a2c.py`
 
@@ -406,17 +409,21 @@ Single EWMA DSR implementation shared by training, evaluation, and Buy-and-Hold.
 
 ### `src/training_diagnostics.py`
 
-The MFN training script writes one CSV row per rollout under `logs/training_diagnostics/`. It records reward and DSR scale, returns, portfolio value, turnover, allocation entropy/concentration, Dirichlet concentrations, deterministic weight variation, MFN parameter/gradient norms, Actor/Critic losses, and explained variance. `evaluate_mfn_a2c.py` automatically reads the newest matching run and prints threshold-based possible causes of weak training.
+The MFN and A2C training scripts write one CSV row per rollout under `logs/training_diagnostics/`. In addition to reward, PV, turnover, allocation and Actor/Critic losses, they record per-asset Gaussian exploration scale, sampled-versus-deterministic allocation distance, Advantage/return-target statistics, Critic target correlation/RMSE, and DSR/log-return sign conflict. MFN additionally exposes extractor parameter/gradient information. Each single-stage run creates one timestamped file.
+
+All four model evaluators also save per-step `asset_return_*`, `return_contribution_*`, and `pnl_contribution_*` columns. The terminal report shows each underlying asset's compounded return and path-dependent PnL contribution; their PnL total reconciles exactly to `Final PV - Initial PV` in the no-fee environment.
+
+Evaluation also reports whether allocations follow relative strength over 6/12/36/84 bars (12 hours/1 day/3 days/7 days). Trailing returns are shifted by one bar before rolling, so only information available before the action is used. Ex-post next-interval winner/loser weights are explanation-only diagnostics and are never model inputs.
 
 ### Resume an interrupted MFN run
 
-Start a new 300,000-step run normally:
+Start a new single-stage run normally:
 
 ```powershell
 python scripts\train_mfn_a2c.py
 ```
 
-If it is interrupted after a periodic checkpoint has been written, resume the newest checkpoint that exactly matches the current MFN architecture, 5+20 features, paper DSR, one update epoch, and 300,000-step experiment:
+If interrupted, resume the newest compatible checkpoint automatically:
 
 ```powershell
 python scripts\train_mfn_a2c.py --resume
@@ -434,7 +441,7 @@ Portfolio environment for BTC, ETH, LTC, BNB, and USDT. MFN-A2C uses direct simp
 
 ### `src/simplex_policy.py`
 
-Dirichlet actor distribution for MFN-A2C. Positive concentration parameters are produced with Softplus; stochastic training actions and deterministic mean actions are both non-negative and sum directly to one, without `[-5, 5]` clipping or an environment Softmax.
+Optional Dirichlet actor distribution retained for ablation experiments. It is not used by the current fair comparison, where all three A2C methods use the same standard SB3 Gaussian-logit policy plus environment Softmax.
 
 ### `src/price_only_env.py`
 
@@ -481,7 +488,7 @@ Run at least five random seeds for formal experiments and report the mean and st
 2. USDT is treated as the stable/cash asset for RL agents. Following the thesis definition, Buy-and-Hold allocates 25% each to BTC, ETH, LTC, and BNB, assigns 0% to USDT, and does not rebalance.
 3. The formal reproduction uses paper-style EWMA moment changes with `eta = 0.005` and a five-step warm-up. The numerical variance guard remains enabled, and reported Peak/Final values refer to cumulative DSR. Canonical-innovation results remain an ablation and cannot be compared numerically with paper-style DSR.
 4. Technical indicators form the second temporal modality.
-5. MFN-A2C directly samples continuous simplex portfolio weights from a Dirichlet distribution. Older A2C experiments still use the legacy Gaussian-logit action mode until migrated separately.
+5. All three A2C methods use the same SB3 Gaussian-logit action followed by environment Softmax. DQN uses a discrete simplex grid and bypasses the Softmax because its wrapper already emits valid weights.
 6. DQN uses a discrete action-space adaptation.
 7. `original/` is retained for reference and is not part of the main execution pipeline.
 8. Large model files, checkpoints, TensorBoard logs, and intermediate datasets may be excluded from Git.

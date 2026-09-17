@@ -17,7 +17,8 @@ from src.evaluation_metrics import (
     summarize_dsr,
     validate_test_period,
 )
-from src.experiment_periods import PERIODS_PER_YEAR
+from src.experiment_periods import LOOKBACK, PERIODS_PER_YEAR
+from src.experiment_config import DSR_ETA, DSR_FORMULA
 
 
 DATA = ROOT / "data"
@@ -34,9 +35,9 @@ def main():
     df = pd.read_csv(
         DATA / "merged_output_test.csv"
     )
-    test_period = validate_test_period(df, lookback=20)
+    test_period = validate_test_period(df, lookback=LOOKBACK)
 
-    # 與 RL 環境採用相同時間軸：先觀察 20 根完整 K 線，再由 Open[20] 進場。
+    # 與RL環境採用相同時間軸：先完成觀察窗，再由Open[LOOKBACK]進場。
     open_columns = [
         "Open0",
         "Open1",
@@ -47,7 +48,7 @@ def main():
     prices = (
         df[open_columns]
         .astype(float)
-        .iloc[20:]
+        .iloc[LOOKBACK:]
         .reset_index(drop=True)
     )
 
@@ -74,7 +75,7 @@ def main():
         "return": portfolio_value.pct_change(),
         "turnover": 0.0,
     })
-    result = add_test_timestamps(result, df, lookback=20)
+    result = add_test_timestamps(result, df, lookback=LOOKBACK)
 
     # Buy-and-hold starts at 25% per crypto, then weights drift with prices.
     for column, asset in zip(
@@ -84,7 +85,11 @@ def main():
         result[f"weight_{asset}"] = crypto_components[column] / portfolio
     result["weight_usdt"] = usdt_weight / portfolio
 
-    result = add_dsr_columns(result)
+    result = add_dsr_columns(
+        result,
+        eta=DSR_ETA,
+        formula=DSR_FORMULA,
+    )
     dsr_metrics = summarize_dsr(result)
 
     result.to_csv(

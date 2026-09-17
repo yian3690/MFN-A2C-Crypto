@@ -6,7 +6,7 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / 'data'
 
-for split in ('train','test'):
+for split in ('train', 'validation', 'development', 'test'):
     ts = pd.read_csv(DATA / f'timestamps_{split}.csv')
     raw = pd.read_csv(DATA / f'merged_output_{split}.csv')
     price = pd.read_csv(DATA / f'pct_change_output_{split}.csv')

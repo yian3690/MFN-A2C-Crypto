@@ -15,17 +15,20 @@ from src.feature_scaling import FeatureStandardizer
 from src.feature_schema import CRYPTO_ASSETS, INDICATOR_DIM, PRICE_DIM
 from src.experiment_periods import (
     DATA_START,
+    EXPECTED_DEVELOPMENT_ROWS,
     EXPECTED_TOTAL_VALID_ROWS,
     EXPECTED_TRAIN_ROWS,
     EXPECTED_VALID_START,
     TEST_END_EXCLUSIVE,
     TEST_ROWS,
     TEST_START,
+    VALIDATION_ROWS,
 )
 
 DATA = ROOT / 'data'
 MERGED = DATA / 'merged_output.csv'
 ASSETS = list(CRYPTO_ASSETS)
+RS_7D_BARS = 7 * 24 // 2
 
 
 def main():
@@ -50,6 +53,22 @@ def main():
     price = pd.DataFrame({'Open Time': raw['Open Time']})
     tech = pd.DataFrame({'Open Time': raw['Open Time']})
 
+    crypto_closes = pd.DataFrame(index=raw.index)
+    for i, asset in enumerate(ASSETS):
+        crypto_closes[asset] = pd.to_numeric(raw[f'Close{i}'], errors='coerce')
+
+    # 方案A：以過去7日（84根2小時K線）報酬減去四種加密貨幣的
+    # 同期平均報酬。這是橫截面相對強勢，只使用t及t以前的價格，
+    # 不會讀取下一期或Test未來資料。
+    rs_reference = crypto_closes.shift(RS_7D_BARS)
+    # 原始資料從2018-01-01才開始，最前面的84根沒有完整7日歷史。
+    # 為維持論文33,524筆有效資料，該小段使用「截至當時可取得的
+    # 最長歷史」（第一根Close）作參考；滿84根後一律為固定7日。
+    # 這個fallback只向後看，不會以未來值補資料。
+    rs_reference = rs_reference.fillna(crypto_closes.iloc[0])
+    momentum_7d = crypto_closes / rs_reference - 1.0
+    relative_strength_7d = momentum_7d.sub(momentum_7d.mean(axis=1), axis=0)
+
     for i, asset in enumerate(ASSETS):
         c = pd.to_numeric(raw[f'Close{i}'], errors='coerce')
 
@@ -61,24 +80,30 @@ def main():
         ema = ta.ema(c, length=20)
         rsi = ta.rsi(c, length=14)
         macd = ta.macd(c, fast=12, slow=26, signal=9)
-        if any(v is None for v in (sma, ema, rsi, macd)) or 'MACD_12_26_9' not in macd.columns:
+        if (
+            any(value is None for value in (sma, ema, rsi, macd))
+            or 'MACD_12_26_9' not in macd.columns
+        ):
             raise RuntimeError(f'Technical-indicator calculation failed for {asset}')
-        # Use indicator levels stated in the thesis. Train-only z-score
-        # scaling below handles their different numerical units.
+
+        # 恢復較穩定的level＋Train-only z-score版本：先保留指標原始水準，
+        # 等完成Train/Test切分後，再只用Train統計量統一標準化。
         tech[f'{asset}_SMA20'] = sma
         tech[f'{asset}_EMA20'] = ema
-        # The archived implementation selects MACD_12_26_9 (the DIF/MACD
-        # line), which also agrees with the reported 26-row warm-up.
+        # 沿用封存原碼的DIF／MACD line；不使用九期signal line。
         tech[f'{asset}_MACD'] = macd['MACD_12_26_9']
         tech[f'{asset}_RSI14'] = rsi
+        tech[f'{asset}_RS_7D'] = relative_strength_7d[asset]
 
-    # USDT is the fifth risk-free asset. Its neutral constants become zero
-    # after Train-only z-score scaling and therefore add no false signal.
+    # USDT視為無風險資產。下列中性常數經Train-only z-score後皆為0，
+    # 因此維持5項資產的一致欄位，不會向模型提供虛假USDT趨勢。
     price['USDT_price_relative'] = 1.0
     tech['USDT_SMA20'] = 1.0
     tech['USDT_EMA20'] = 1.0
     tech['USDT_MACD'] = 0.0
     tech['USDT_RSI14'] = 50.0
+    # USDT不參與四種加密貨幣的橫截面排名，設為中性值；經z-score後仍為0。
+    tech['USDT_RS_7D'] = 0.0
 
     # THE FIX: join all modalities and raw rows by the SAME timestamp before dropna.
     combined = price.merge(tech, on='Open Time', how='inner', validate='one_to_one')
@@ -108,13 +133,27 @@ def main():
     if not aligned_raw['Open Time'].equals(combined['Open Time']):
         raise RuntimeError('FINAL ALIGNMENT FAILED: raw and feature timestamps differ.')
 
-    train_mask = combined['Open Time'] < TEST_START
     test_mask = (
         (combined['Open Time'] >= TEST_START)
         & (combined['Open Time'] < TEST_END_EXCLUSIVE)
     )
+    development_positions = np.flatnonzero(
+        (combined['Open Time'] < TEST_START).to_numpy()
+    )
+    if len(development_positions) != EXPECTED_DEVELOPMENT_ROWS:
+        raise RuntimeError(
+            f'Expected {EXPECTED_DEVELOPMENT_ROWS} pre-Test rows, got '
+            f'{len(development_positions)}.'
+        )
+    validation_positions = development_positions[-VALIDATION_ROWS:]
+    train_positions = development_positions[:-VALIDATION_ROWS]
+    train_mask = np.zeros(len(combined), dtype=bool)
+    validation_mask = np.zeros(len(combined), dtype=bool)
+    train_mask[train_positions] = True
+    validation_mask[validation_positions] = True
 
     train_rows = int(train_mask.sum())
+    validation_rows = int(validation_mask.sum())
     test_rows = int(test_mask.sum())
     if len(combined) != EXPECTED_TOTAL_VALID_ROWS:
         raise RuntimeError(
@@ -130,30 +169,73 @@ def main():
         raise RuntimeError(
             f'Expected {EXPECTED_TRAIN_ROWS} Train rows, got {train_rows}.'
         )
+    if validation_rows != VALIDATION_ROWS:
+        raise RuntimeError(
+            f'Expected {VALIDATION_ROWS} Validation rows, got '
+            f'{validation_rows}.'
+        )
     if test_rows != TEST_ROWS:
         raise RuntimeError(f'Expected {TEST_ROWS} Test rows, got {test_rows}.')
 
-    # Fit scaling on all 32,444 Train rows. Test remains strictly excluded.
-    price_scaler = FeatureStandardizer.fit(
+    # Stage 1只用Train擬合，供Train/Validation選擇訓練步數。
+    train_price_scaler = FeatureStandardizer.fit(
         combined.loc[train_mask, price_cols]
     )
-    tech_scaler = FeatureStandardizer.fit(
+    train_tech_scaler = FeatureStandardizer.fit(
         combined.loc[train_mask, tech_cols]
     )
-    combined.loc[:, price_cols] = price_scaler.transform(combined[price_cols])
-    combined.loc[:, tech_cols] = tech_scaler.transform(combined[tech_cols])
+    stage1_scaled = combined.copy()
+    stage1_scaled.loc[:, price_cols] = train_price_scaler.transform(
+        combined[price_cols]
+    )
+    stage1_scaled.loc[:, tech_cols] = train_tech_scaler.transform(
+        combined[tech_cols]
+    )
 
-    scaler_table = pd.concat(
+    # Stage 2可用Train＋Validation重擬Scaler，但Test仍完全排除。
+    development_mask = train_mask | validation_mask
+    development_price_scaler = FeatureStandardizer.fit(
+        combined.loc[development_mask, price_cols]
+    )
+    development_tech_scaler = FeatureStandardizer.fit(
+        combined.loc[development_mask, tech_cols]
+    )
+    final_scaled = combined.copy()
+    final_scaled.loc[:, price_cols] = development_price_scaler.transform(
+        combined[price_cols]
+    )
+    final_scaled.loc[:, tech_cols] = development_tech_scaler.transform(
+        combined[tech_cols]
+    )
+
+    train_scaler_table = pd.concat(
         [
-            price_scaler.to_frame('price'),
-            tech_scaler.to_frame('technical_indicator'),
+            train_price_scaler.to_frame('price'),
+            train_tech_scaler.to_frame('technical_indicator'),
         ],
         ignore_index=True,
     )
-    scaler_table.to_csv(DATA / 'feature_scaler.csv', index=False)
+    development_scaler_table = pd.concat(
+        [
+            development_price_scaler.to_frame('price'),
+            development_tech_scaler.to_frame('technical_indicator'),
+        ],
+        ignore_index=True,
+    )
+    train_scaler_table.to_csv(DATA / 'feature_scaler_train.csv', index=False)
+    development_scaler_table.to_csv(
+        DATA / 'feature_scaler_development.csv',
+        index=False,
+    )
+    development_scaler_table.to_csv(DATA / 'feature_scaler.csv', index=False)
 
-    for split_name, mask in [('train', train_mask), ('test', test_mask)]:
-        c = combined.loc[mask].reset_index(drop=True)
+    for split_name, mask, scaled_source in [
+        ('train', train_mask, stage1_scaled),
+        ('validation', validation_mask, stage1_scaled),
+        ('development', development_mask, final_scaled),
+        ('test', test_mask, final_scaled),
+    ]:
+        c = scaled_source.loc[mask].reset_index(drop=True)
         r = aligned_raw.loc[mask].reset_index(drop=True)
         c[ ['Open Time'] ].to_csv(DATA / f'timestamps_{split_name}.csv', index=False)
         c[price_cols].to_csv(DATA / f'pct_change_output_{split_name}.csv', index=False)
@@ -166,13 +248,19 @@ def main():
     print('Feature preparation complete.')
     print(f'Total valid rows : {len(combined):,}')
     print(f'Train rows       : {train_rows:,}')
+    print(f'Validation rows  : {validation_rows:,}')
     print(f'Test rows        : {test_rows:,}')
     print(f'Price features   : {len(price_cols)}')
     print(f'TA features      : {len(tech_cols)}')
     print(f'Train period     : {combined.loc[train_mask, "Open Time"].iloc[0]} -> {combined.loc[train_mask, "Open Time"].iloc[-1]}')
+    print(f'Validation period: {combined.loc[validation_mask, "Open Time"].iloc[0]} -> {combined.loc[validation_mask, "Open Time"].iloc[-1]}')
     print(f'Test period      : {combined.loc[test_mask, "Open Time"].iloc[0]} -> {combined.loc[test_mask, "Open Time"].iloc[-1]}')
-    print('Scaler fit data  : Train only (Test excluded)')
-    print(f'Scaler metadata  : {DATA / "feature_scaler.csv"}')
+    print('Feature levels   : SMA / EMA / MACD(DIF) / RSI / RS_7D')
+    print(f'RS_7D lookback   : {RS_7D_BARS} bars (7 days at 2H)')
+    print('Stage 1 scaling  : Train-only z-score')
+    print('Stage 2 scaling  : Train+Validation z-score (Test excluded)')
+    print(f'Train scaler     : {DATA / "feature_scaler_train.csv"}')
+    print(f'Development scaler: {DATA / "feature_scaler_development.csv"}')
     print('Alignment check  : PASS')
 
 

@@ -1,6 +1,7 @@
-"""Train the price-only A2C ablation for Experiment 1."""
+"""使用完整Train資料，單階段訓練不含技術指標的A2C。"""
 
 import sys
+from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -9,162 +10,97 @@ sys.path.insert(0, str(ROOT))
 from stable_baselines3.common.callbacks import CheckpointCallback
 from stable_baselines3.common.monitor import Monitor
 
-from src.experiment_periods import LOOKBACK
+from src.experiment_config import (
+    A2C_ACTION_MODE,
+    A2C_LOG_STD_INIT,
+    A2C_NORMALIZE_ADVANTAGE,
+    A2C_UPDATE_EPOCHS,
+    A2C_WITHOUT_TI_MODEL_NAME,
+    CHECKPOINT_FREQUENCY,
+    DSR_REWARD_SCALE,
+    LOGS,
+    LOOKBACK,
+    MODELS,
+    RETURN_REWARD_SCALE,
+    RUN_TAG,
+    TOTAL_TIMESTEPS,
+    a2c_algorithm_kwargs,
+    make_portfolio_env,
+)
 from src.feature_schema import PRICE_DIM
 from src.multi_epoch_a2c import MultiEpochA2C
-from src.portfolio_env_sb3 import CryptoPortfolioEnv
 from src.price_only_env import PriceOnlyWrapper
+from src.training_diagnostics import TrainingDiagnosticsCallback
 
 
-DATA = ROOT / "data"
-MODELS = ROOT / "models"
-LOGS = ROOT / "logs"
 CHECKPOINTS = ROOT / "checkpoints_a2c_without_ti"
 
-TOTAL_TIMESTEPS = 600_000
-UPDATE_EPOCHS = 18
 
-
-def make_env(paths, *, random_start, max_episode_steps):
-
-    """Create the configured Gymnasium environment used by this script."""
-    base_env = CryptoPortfolioEnv(
-        pct_csv=str(
-            paths["pct"]
-        ),
-
-        ta_csv=str(
-            paths["ta"]
-        ),
-
-        raw_csv=str(
-            paths["raw"]
-        ),
-
-        n_previous_timesteps=LOOKBACK,
-
-        max_episode_steps=max_episode_steps,
-
-        reward_type="dsr",
-
-        eta=0.005,
-
-        initial_balance=10000,
-
-        random_start=random_start,
+def diagnostics_callback() -> TrainingDiagnosticsCallback:
+    """建立A2C w/o TI單階段rollout診斷檔。"""
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    path = (
+        LOGS
+        / "training_diagnostics"
+        / f"a2c_without_ti_{RUN_TAG}_{stamp}.csv"
     )
-
-    # Remove technical indicators.
-    env = PriceOnlyWrapper(
-        base_env,
-        price_dim=PRICE_DIM,
-    )
-
-    return Monitor(env)
+    print(f"Training diagnostics: {path}")
+    return TrainingDiagnosticsCallback(path)
 
 
 def main():
-    """主程式入口：依序執行此腳本定義的完整流程。"""
+    """在完整Development上訓練固定300k步，Test保持隔離。"""
     MODELS.mkdir(parents=True, exist_ok=True)
     (LOGS / "tensorboard").mkdir(parents=True, exist_ok=True)
     CHECKPOINTS.mkdir(parents=True, exist_ok=True)
 
-    train_paths = {
-        "pct": DATA / "pct_change_output_train.csv",
-        "ta": DATA / "ta_test_train.csv",
-        "raw": DATA / "merged_output_train.csv",
-    }
-    env = make_env(
-        train_paths,
-        random_start=True,
-        max_episode_steps=540,
+    base_env = make_portfolio_env(
+        "development",
+        action_mode=A2C_ACTION_MODE,
     )
-
-    print("=" * 60)
-    print("A2C WITHOUT TECHNICAL INDICATORS")
-    print("=" * 60)
-
-    print(
-        f"Observation shape : {env.observation_space.shape}"
-    )
-
-    print(
-        f"Total timesteps   : {TOTAL_TIMESTEPS}"
-    )
-
-    print(f"Price features    : {PRICE_DIM}")
-    print("Technical features: 0")
-    print("MFN               : NO")
-    print("Historical window : 20")
-    print("Time interval     : 2H")
-    print("DSR eta           : 0.005")
-    print("A2C gamma         : 0.99")
-    print("A2C n_steps       : 540")
-    print(f"Update epochs     : {UPDATE_EPOCHS}")
-    print("Learning rate     : 7e-4")
-
-    print("=" * 60)
-
-    policy_kwargs = dict(
-
-        net_arch=dict(
-            pi=[64, 64],
-            vf=[64, 64],
-        )
-    )
-
+    env = Monitor(PriceOnlyWrapper(base_env, price_dim=PRICE_DIM))
     model = MultiEpochA2C(
-
         policy="MlpPolicy",
-
         env=env,
-
-        learning_rate=7e-4,
-
-        gamma=0.99,
-
-        n_steps=540,
-
-        update_epochs=UPDATE_EPOCHS,
-
-        policy_kwargs=policy_kwargs,
-
-        verbose=1,
-
-        device="auto",
-
-        seed=123,
-
-        tensorboard_log=str(
-            LOGS / "tensorboard"
-        ),
+        **a2c_algorithm_kwargs(),
     )
-
-    checkpoint_callback = CheckpointCallback(
-        save_freq=100_000,
+    checkpoint = CheckpointCallback(
+        save_freq=CHECKPOINT_FREQUENCY,
         save_path=str(CHECKPOINTS),
-        name_prefix="A2C_without_TI",
+        name_prefix=f"A2C_WITHOUT_TI_{RUN_TAG.upper()}",
     )
+
+    print("=" * 60)
+    print("A2C WITHOUT TI - SINGLE-STAGE FULL-TRAIN TRAINING")
+    print("=" * 60)
+    print(f"Total timesteps : {TOTAL_TIMESTEPS:,}")
+    print("Training data   : complete chronological Train")
+    print("Validation      : disabled")
+    print("Model selection : fixed final 300k model")
+    print(f"Gaussian log std: {A2C_LOG_STD_INIT:g} (initial std ~= 0.3679)")
+    print(f"Normalize advantage: {A2C_NORMALIZE_ADVANTAGE}")
+    print(f"Window          : {LOOKBACK} ({LOOKBACK * 2} hours)")
+    print(f"Price features  : {PRICE_DIM}")
+    print("Technical features: 0")
+    print(
+        f"Reward          : {DSR_REWARD_SCALE:g} x DSR + "
+        f"{RETURN_REWARD_SCALE:g} x log return"
+    )
+    print(f"Update epochs   : {A2C_UPDATE_EPOCHS}")
+    print("=" * 60)
 
     model.learn(
-
         total_timesteps=TOTAL_TIMESTEPS,
-
         progress_bar=True,
-
-        callback=checkpoint_callback,
+        callback=[checkpoint, diagnostics_callback()],
     )
-
-    output = MODELS / "a2c_without_ti"
+    output = MODELS / A2C_WITHOUT_TI_MODEL_NAME
     model.save(str(output))
-    model.save(str(CHECKPOINTS / "A2C_without_TI_600000_final"))
+    env.close()
 
     print()
-    print("=" * 60)
-    print("A2C WITHOUT TI TRAINING FINISHED")
-    print("=" * 60)
-
-    env.close()
+    print("A2C WITHOUT TI SINGLE-STAGE TRAINING FINISHED")
+    print(f"Saved final model: {output}.zip")
 
 
 if __name__ == "__main__":

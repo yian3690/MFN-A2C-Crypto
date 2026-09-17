@@ -11,24 +11,33 @@ sys.path.insert(0, str(ROOT))
 
 from stable_baselines3 import DQN
 
+from src.experiment_config import (
+    DATA,
+    DQN_ACTION_MODE,
+    DQN_MAX_CRYPTO_WEIGHT,
+    DQN_MODEL_NAME,
+    DQN_RESULT_NAME,
+    DQN_WEIGHT_STEP,
+    MODELS,
+    RESULTS,
+    make_portfolio_env,
+)
 from src.evaluation_metrics import (
     add_test_timestamps,
     add_dsr_columns,
+    add_strength_alignment_columns,
     print_allocation_summary,
+    print_asset_contribution_summary,
+    print_strength_alignment_summary,
     print_test_period,
     summarize_allocations,
+    summarize_asset_contributions,
     summarize_dsr,
+    summarize_strength_alignment,
     validate_test_period,
 )
-from src.portfolio_env_sb3 import CryptoPortfolioEnv
 from src.discrete_action_env import DiscretePortfolioWrapper
-from src.experiment_periods import PERIODS_PER_YEAR
-
-
-DATA = ROOT / "data"
-MODELS = ROOT / "models"
-RESULTS = ROOT / "results"
-MAX_CRYPTO_WEIGHT = 0.60
+from src.experiment_periods import LOOKBACK, PERIODS_PER_YEAR
 
 RESULTS.mkdir(
     parents=True,
@@ -42,46 +51,17 @@ def main():
     test_raw = pd.read_csv(
         DATA / "merged_output_test.csv"
     )
-    test_period = validate_test_period(test_raw, 20)
-
-    max_steps = (
-        len(test_raw) - 20 - 1
-    )
-
-    base_env = CryptoPortfolioEnv(
-        pct_csv=str(
-            DATA / "pct_change_output_test.csv"
-        ),
-
-        ta_csv=str(
-            DATA / "ta_test_test.csv"
-        ),
-
-        raw_csv=str(
-            DATA / "merged_output_test.csv"
-        ),
-
-        n_previous_timesteps=20,
-
-        max_episode_steps=max_steps,
-
-        reward_type="dsr",
-
-        initial_balance=10000.0,
-
-        eta=0.005,
-
-        random_start=False,
-)
+    test_period = validate_test_period(test_raw, LOOKBACK)
+    base_env = make_portfolio_env("test", action_mode=DQN_ACTION_MODE)
 
     env = DiscretePortfolioWrapper(
         base_env,
-        weight_step=0.2,
-        max_crypto_weight=MAX_CRYPTO_WEIGHT,
+        weight_step=DQN_WEIGHT_STEP,
+        max_crypto_weight=DQN_MAX_CRYPTO_WEIGHT,
     )
 
     model = DQN.load(
-        str(MODELS / "dqn_baseline"),
+        str(MODELS / DQN_MODEL_NAME),
         env=env,
         device="cpu",
     )
@@ -108,19 +88,23 @@ def main():
     result = add_test_timestamps(
         base_env.get_results(),
         test_raw,
-        20,
+        LOOKBACK,
     )
     result = add_dsr_columns(
         result,
         eta=base_env.eta,
         warmup_steps=base_env.dsr_warmup_steps,
+        formula=base_env.dsr_formula,
     )
+    result = add_strength_alignment_columns(result)
     dsr_metrics = summarize_dsr(result)
     allocation_metrics = summarize_allocations(result)
+    contribution_metrics = summarize_asset_contributions(result)
+    strength_metrics = summarize_strength_alignment(result)
 
     output = (
         RESULTS /
-        "dqn_baseline_results.csv"
+        DQN_RESULT_NAME
     )
 
     result.to_csv(
@@ -205,6 +189,8 @@ def main():
 
     print()
     print_allocation_summary(allocation_metrics)
+    print_asset_contribution_summary(contribution_metrics)
+    print_strength_alignment_summary(strength_metrics)
     print()
     print(
         f"Saved: {output}"

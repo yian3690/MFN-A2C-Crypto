@@ -13,7 +13,7 @@ class GitHubStyleTwoViewMFNTests(unittest.TestCase):
         self.observation_space = gym.spaces.Box(
             low=-10.0,
             high=10.0,
-            shape=(20, 25),
+            shape=(20, 30),
             dtype=float,
         )
 
@@ -52,7 +52,7 @@ class GitHubStyleTwoViewMFNTests(unittest.TestCase):
             candidate_hidden=9,
             gate_hidden=7,
         )
-        observations = torch.randn(4, 20, 25, requires_grad=True)
+        observations = torch.randn(4, 20, 30, requires_grad=True)
 
         output = model(observations)
         self.assertEqual(tuple(output.shape), (4, 28))
@@ -71,11 +71,11 @@ class GitHubStyleTwoViewMFNTests(unittest.TestCase):
             self.assertTrue(torch.isfinite(gradient).all())
 
     def test_modal_feature_dimensions_must_match_observation(self):
-        with self.assertRaisesRegex(ValueError, "observation has 25 features"):
+        with self.assertRaisesRegex(ValueError, "observation has 30 features"):
             GitHubStyleTwoViewMFN(
                 self.observation_space,
                 price_dim=4,
-                indicator_dim=20,
+                indicator_dim=25,
             )
 
 

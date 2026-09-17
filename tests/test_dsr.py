@@ -8,6 +8,7 @@ from src.dsr import (
     CANONICAL_FORMULA,
     DEFAULT_WARMUP_STEPS,
     DSRTracker,
+    LEGACY_EXPANDING_FORMULA,
     PAPER_FORMULA,
     calculate_dsr_series,
 )
@@ -95,6 +96,26 @@ class DSRTestCase(unittest.TestCase):
     def test_invalid_formula_is_rejected(self):
         with self.assertRaises(ValueError):
             DSRTracker(formula="unknown")
+
+    def test_legacy_expanding_matches_archived_equation(self):
+        eta = 0.005
+        tracker = DSRTracker(
+            eta=eta,
+            warmup_steps=5,
+            formula=LEGACY_EXPANDING_FORMULA,
+        )
+        values = [tracker.update(value) for value in self.returns]
+        np.testing.assert_array_equal(values[:5], np.zeros(5))
+
+        history = self.returns[:5]
+        current = self.returns[5]
+        mean = float(history.mean())
+        second = float(np.square(history).mean())
+        expected = eta * (
+            second * (current - mean)
+            - 0.5 * mean * (current**2 - second)
+        ) / (second - mean**2) ** 1.5
+        self.assertAlmostEqual(values[5], expected)
 
 
 if __name__ == "__main__":

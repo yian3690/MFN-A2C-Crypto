@@ -34,6 +34,23 @@ class TrainMFNResumeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             self.assertIsNone(find_latest_checkpoint(directory))
 
+    def test_checkpoints_from_other_experiments_cannot_mix(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            compatible = root / f"{CHECKPOINT_PREFIX}_100000_steps.zip"
+            incompatible_prefix = f"{CHECKPOINT_PREFIX}_OTHER"
+            incompatible = root / f"{incompatible_prefix}_200000_steps.zip"
+            compatible.touch()
+            incompatible.touch()
+            self.assertEqual(
+                find_latest_checkpoint(root, CHECKPOINT_PREFIX),
+                compatible,
+            )
+            self.assertEqual(
+                find_latest_checkpoint(root, incompatible_prefix),
+                incompatible,
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

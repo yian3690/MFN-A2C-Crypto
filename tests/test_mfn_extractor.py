@@ -13,7 +13,7 @@ class TwoViewMFNTests(unittest.TestCase):
         self.observation_space = gym.spaces.Box(
             low=-10.0,
             high=10.0,
-            shape=(20, 25),
+            shape=(20, 30),
             dtype=float,
         )
 
@@ -21,7 +21,7 @@ class TwoViewMFNTests(unittest.TestCase):
         model = TwoViewMFN(
             self.observation_space,
             price_dim=5,
-            indicator_dim=20,
+            indicator_dim=25,
             lstm_hidden=8,
             memory_dim=16,
             output_dim=12,
@@ -39,12 +39,12 @@ class TwoViewMFNTests(unittest.TestCase):
         model = TwoViewMFN(
             self.observation_space,
             price_dim=5,
-            indicator_dim=20,
+            indicator_dim=25,
             lstm_hidden=8,
             memory_dim=16,
             output_dim=12,
         )
-        observations = torch.randn(4, 20, 25, requires_grad=True)
+        observations = torch.randn(4, 20, 30, requires_grad=True)
 
         output = model(observations)
         self.assertEqual(tuple(output.shape), (4, 12))

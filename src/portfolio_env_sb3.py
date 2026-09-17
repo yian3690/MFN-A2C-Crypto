@@ -5,7 +5,7 @@ This version keeps the user's original idea but fixes the major integration
 points needed by Stable-Baselines3:
 
 - Gymnasium reset()/step() signatures
-- Paper-style two-view observation shape: 20 x (5 price + 20 indicators)
+- Two-view observation shape: configurable window x (5 price + 25 features)
 - 5-asset action: BTC, ETH, LTC, BNB, USDT
 - Portfolio rebalancing at every 2-hour step
 - Optional DSR reward
@@ -46,6 +46,9 @@ class CryptoPortfolioEnv(gym.Env):
         reward_type: str = "dsr",
         initial_balance: float = 10000.0,
         eta: float = 0.005,
+        dsr_reward_scale: float = 1.0,
+        return_reward_scale: float = 0.0,
+        dsr_reward_mode: str = "step",
         dsr_warmup_steps: int = DEFAULT_WARMUP_STEPS,
         dsr_formula: str = DEFAULT_FORMULA,
         random_start: bool = True,
@@ -65,12 +68,27 @@ class CryptoPortfolioEnv(gym.Env):
         self.n_previous_timesteps = n_previous_timesteps
         self.initial_balance = float(initial_balance)
         self.eta = float(eta)
+        self.dsr_reward_scale = float(dsr_reward_scale)
+        self.return_reward_scale = float(return_reward_scale)
+        self.dsr_reward_mode = dsr_reward_mode.lower()
         self.dsr_warmup_steps = int(dsr_warmup_steps)
         self.dsr_formula = dsr_formula
         self.reward_type = reward_type.lower()
         self.random_start = random_start
         self.action_mode = action_mode.lower()
         self.render_mode = render_mode
+
+        if not np.isfinite(self.dsr_reward_scale) or self.dsr_reward_scale <= 0:
+            raise ValueError("dsr_reward_scale must be a positive finite number.")
+        if (
+            not np.isfinite(self.return_reward_scale)
+            or self.return_reward_scale < 0
+        ):
+            raise ValueError(
+                "return_reward_scale must be a non-negative finite number."
+            )
+        if self.dsr_reward_mode not in {"step", "cumulative"}:
+            raise ValueError("dsr_reward_mode must be 'step' or 'cumulative'.")
 
         if self.action_mode not in {"logits", "simplex"}:
             raise ValueError("action_mode must be 'logits' or 'simplex'.")
@@ -88,7 +106,8 @@ class CryptoPortfolioEnv(gym.Env):
             dtype=np.float64
         )
 
-        # Thesis schema: five price relatives and four indicators per asset.
+        # Scheme-A schema: five price relatives and five features per asset
+        # (the paper's four indicators plus the RS_7D ablation feature).
         self.price_dim = self.pct_data.shape[1]
         self.indicator_dim = self.ta_data.shape[1]
         total_features = self.price_dim + self.indicator_dim
@@ -100,7 +119,7 @@ class CryptoPortfolioEnv(gym.Env):
         if self.indicator_dim != INDICATOR_DIM:
             raise ValueError(
                 f"Expected {INDICATOR_DIM} technical-indicator features "
-                f"(5 x 4), got {self.indicator_dim}."
+                f"(5 assets x 5 features), got {self.indicator_dim}."
             )
 
         self.observation_space = spaces.Box(
@@ -146,6 +165,10 @@ class CryptoPortfolioEnv(gym.Env):
         self.reward_history: list[float] = []
         self.weight_history: list[np.ndarray] = []
         self.turnover_history: list[float] = []
+        # 每一步保留各資產報酬及其對組合的貢獻，供回測歸因。
+        self.asset_return_history: list[np.ndarray] = []
+        self.return_contribution_history: list[np.ndarray] = []
+        self.pnl_contribution_history: list[np.ndarray] = []
 
         self.dsr_tracker = DSRTracker(
             eta=self.eta,
@@ -221,6 +244,10 @@ class CryptoPortfolioEnv(gym.Env):
         self.reward_history = []
         self.weight_history = [self.weights.copy()]
         self.turnover_history = []
+        self.asset_return_history = []
+        self.return_contribution_history = []
+        self.pnl_contribution_history = []
+        self.cumulative_dsr = 0.0
 
         self.dsr_tracker.reset()
 
@@ -263,25 +290,50 @@ class CryptoPortfolioEnv(gym.Env):
         crypto_returns = (next_prices / current_prices) - 1.0
         all_returns = np.concatenate([crypto_returns, [0.0]])
 
-        portfolio_return = float(np.dot(self.weights, all_returns))
+        return_contributions = self.weights * all_returns
+        portfolio_return = float(return_contributions.sum())
+        if portfolio_return <= -1.0:
+            raise RuntimeError("Portfolio return must be greater than -100%.")
+        log_portfolio_return = float(np.log1p(portfolio_return))
+        # 使用交易前PV換算每項資產的當期損益；各資產損益加總會精確等於
+        # 最終PV減初始PV（目前環境不含手續費與滑價）。
+        pnl_contributions = self.balance * return_contributions
         self.balance *= (1.0 + portfolio_return)
 
         self.return_history.append(portfolio_return)
         self.balance_history.append(self.balance)
         self.weight_history.append(self.weights.copy())
         self.turnover_history.append(turnover)
+        self.asset_return_history.append(all_returns.copy())
+        self.return_contribution_history.append(return_contributions.copy())
+        self.pnl_contribution_history.append(pnl_contributions.copy())
 
         dsr = self._dsr_reward(portfolio_return)
+        self.cumulative_dsr += dsr
+
+        dsr_signal = (
+            self.cumulative_dsr
+            if self.dsr_reward_mode == "cumulative"
+            else dsr
+        )
+        scaled_dsr_component = self.dsr_reward_scale * dsr_signal
+        scaled_return_component = (
+            self.return_reward_scale * log_portfolio_return
+        )
 
         if self.reward_type == "dsr":
-            reward = dsr
+            # 學長封存原碼使用累積DSR作為每一步reward；目前也保留
+            # step模式，讓兩種定義可以用獨立實驗標籤公平比較。
+            reward = scaled_dsr_component
+        elif self.reward_type == "hybrid":
+            reward = scaled_dsr_component + scaled_return_component
         elif self.reward_type in {"pv", "value"}:
             reward = float(self.balance)
         elif self.reward_type in {"delta_pv", "delta"}:
             reward = float(self.balance_history[-1] - self.balance_history[-2])
         else:
             raise ValueError(
-                "reward_type must be 'dsr', 'pv', or 'delta_pv'."
+                "reward_type must be 'dsr', 'hybrid', 'pv', or 'delta_pv'."
             )
 
         self.reward_history.append(reward)
@@ -301,7 +353,15 @@ class CryptoPortfolioEnv(gym.Env):
         info = {
             "portfolio_value": float(self.balance),
             "portfolio_return": portfolio_return,
+            "log_portfolio_return": log_portfolio_return,
             "DSR": dsr,
+            "cumulative_DSR": self.cumulative_dsr,
+            "scaled_DSR_reward": scaled_dsr_component,
+            "scaled_return_reward": scaled_return_component,
+            "reward_type": self.reward_type,
+            "dsr_reward_scale": self.dsr_reward_scale,
+            "return_reward_scale": self.return_reward_scale,
+            "dsr_reward_mode": self.dsr_reward_mode,
             "dsr_first_moment": self.dsr_tracker.first_moment,
             "dsr_second_moment": self.dsr_tracker.second_moment,
             "dsr_variance": (
@@ -309,6 +369,9 @@ class CryptoPortfolioEnv(gym.Env):
                 - self.dsr_tracker.first_moment**2
             ),
             "weights": self.weights.copy(),
+            "asset_returns": all_returns.copy(),
+            "return_contributions": return_contributions.copy(),
+            "pnl_contributions": pnl_contributions.copy(),
             "turnover": turnover,
             "step": self.counter,
             "decision_idx": decision_idx,
@@ -329,7 +392,7 @@ class CryptoPortfolioEnv(gym.Env):
         )
 
     def get_results(self) -> pd.DataFrame:
-        """整理績效、配置權重與換手率，供評估腳本儲存。"""
+        """整理績效、配置、換手率與逐資產報酬貢獻。"""
         result = pd.DataFrame({
             "portfolio_value": self.balance_history,
             "return": [np.nan] + self.return_history,
@@ -339,4 +402,24 @@ class CryptoPortfolioEnv(gym.Env):
         weights = np.asarray(self.weight_history, dtype=np.float64)
         for index, asset in enumerate(self.ASSETS):
             result[f"weight_{asset.lower()}"] = weights[:, index]
+        asset_returns = np.asarray(self.asset_return_history, dtype=np.float64)
+        return_contributions = np.asarray(
+            self.return_contribution_history,
+            dtype=np.float64,
+        )
+        pnl_contributions = np.asarray(
+            self.pnl_contribution_history,
+            dtype=np.float64,
+        )
+        for index, asset in enumerate(self.ASSETS):
+            suffix = asset.lower()
+            result[f"asset_return_{suffix}"] = np.concatenate(
+                [[np.nan], asset_returns[:, index]]
+            )
+            result[f"return_contribution_{suffix}"] = np.concatenate(
+                [[np.nan], return_contributions[:, index]]
+            )
+            result[f"pnl_contribution_{suffix}"] = np.concatenate(
+                [[np.nan], pnl_contributions[:, index]]
+            )
         return result

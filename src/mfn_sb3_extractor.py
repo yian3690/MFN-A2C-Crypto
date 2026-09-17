@@ -13,10 +13,10 @@ with a third modality commented/partially removed. This file implements the
 clean 2-view version directly rather than keeping the half-removed branch.
 
 Input shape expected by SB3:
-    (batch, 20, 25)
+    (batch, 20, 30)
 where:
     first 5 columns   = 5 asset price-relative features
-    last 20 columns   = 5 assets x 4 technical indicators
+    last 25 columns   = 5 assets x (4 technical indicators + RS_7D)
 
 If your CSV columns are arranged differently, adjust split_dims below.
 """
@@ -111,7 +111,7 @@ class TwoViewMFN(BaseFeaturesExtractor):
         device = x.device
 
         # Feature preparation fixes this order: 5 price-relative columns,
-        # followed by 20 technical-indicator columns.
+        # followed by 25 indicator/relative-strength columns.
         x_price = x[:, :, : self.price_dim]
         x_indicator = x[:, :, self.price_dim :]
 
