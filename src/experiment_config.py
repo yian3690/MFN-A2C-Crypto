@@ -10,7 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from src.dsr import PAPER_FORMULA
-from src.experiment_periods import LOOKBACK
+from src.experiment_periods import LOOKBACK, VALIDATION_ROWS
 from src.feature_schema import RELATIVE_STRENGTH_NAME
 from src.portfolio_env_sb3 import CryptoPortfolioEnv
 
@@ -102,7 +102,7 @@ RUN_TAG = (
     f"{_number_tag(RETURN_REWARD_SCALE)}_eta{_number_tag(DSR_ETA)}_"
     f"win20_gaussian_logstd{_number_tag(A2C_LOG_STD_INIT)}_"
     f"normadv_e{A2C_UPDATE_EPOCHS}_seed{SEED}_"
-    f"{FEATURE_VARIANT}_val1080_pv50k"
+    f"{FEATURE_VARIANT}_val{VALIDATION_ROWS}_pv50k"
 )
 MFN_MODEL_NAME = f"mfn_a2c_{RUN_TAG}"
 A2C_MODEL_NAME = f"a2c_baseline_{RUN_TAG}"

@@ -30,10 +30,10 @@ class ExperimentPeriodsTestCase(unittest.TestCase):
 
     def test_expected_row_counts(self):
         self.assertEqual(TEST_ROWS, 1080)
-        self.assertEqual(VALIDATION_ROWS, 1080)
+        self.assertEqual(VALIDATION_ROWS, 540)
         self.assertEqual(EXPECTED_TOTAL_VALID_ROWS, 33524)
         self.assertEqual(EXPECTED_DEVELOPMENT_ROWS, 32444)
-        self.assertEqual(EXPECTED_TRAIN_ROWS, 31364)
+        self.assertEqual(EXPECTED_TRAIN_ROWS, 31904)
         self.assertEqual(PERIODS_PER_YEAR, 12 * 365)
         self.assertEqual(
             EXPECTED_VALID_START,

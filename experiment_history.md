@@ -831,3 +831,22 @@ Turnover、explained variance、value-return correlation、Gaussian std與sample
 - 這不是600k模型碰巧產生完全相同配置，而是模型選擇機制正確阻止350k後的Validation退化覆蓋最佳模型。`*_final.zip`另存600k末端模型，只供診斷；無`_final`檔名者是正式300k最佳checkpoint。
 - 600k末段explained variance／value-return correlation提升至0.3847／0.7036，表示Critic仍在學習；但較好的value fitting沒有轉化為較高Validation PV。Gaussian std 0.1377與gap 4.60%仍受控制，reward conflict 0.83%，沒有數值或探索崩潰。
 - 結論：對seed456，本設定的泛化最佳步數是300k。延長到600k只增加訓練成本並在後半段出現Validation退化；後續公平比較可維持300k上限，但其他seed仍應各自依Validation選checkpoint，不能假設都固定300k最佳。
+
+## 45. 2026-09-18：Validation由90天縮短為45天
+
+- 為讓模型納入更多Test前近期資料，Validation由1,080筆（90天）縮短為540筆（45天）；Test仍固定1,080筆與原日期，沒有移動或縮短。
+- 被釋出的540筆併回Train，因此切分由31,364／1,080／1,080改為31,904／540／1,080；Train結束時間改為2025-04-19 00:00 UTC，Validation為2025-04-19 02:00至2025-06-03 00:00 UTC。
+- Train-only scaler將以31,904筆重新擬合；Validation與Test依然不參與Scaler擬合。此資料切分改變會使舊模型與舊結果失去直接相容性，必須重新產生特徵並重新訓練。
+- run tag改含`val540`，與先前`val1080`模型、Validation紀錄及結果CSV分開保存。Validation頻率仍為每50k，並保留修改當下的600k訓練上限；其餘A2C與reward設定不變。
+- 45天Validation更貼近Test且提供較新Train資料，但樣本減半後選模方差可能增加；此項應視為資料切分消融，不應用同一Test反覆挑選45天或90天版本。
+
+## 46. 2026-09-18：45天Validation、seed456、600k結果
+
+- Validation Final PV於50k至600k依序為：12,208.70、12,249.07、12,694.17、12,797.99、12,674.14、12,862.87、13,228.55、13,149.68、14,119.44、14,018.61、12,988.36、12,850.58；最佳checkpoint為450k，正式Test未使用600k final模型。
+- Test結果：Final PV 14,108.97、Return 41.09%、Peak PV 15,347.13、Max Drawdown -17.72%、Sharpe 3.2067；raw paper Peak／Final Cumulative DSR為44.9194／18.0314，若僅乘eta換算舊顯示尺度約0.2246／0.0902。
+- 平均配置為BTC 15.00%、ETH 56.21%、LTC 9.92%、BNB 8.81%、USDT 10.05%；ETH PnL 3,562.24 USDT，占總獲利86.69%，是PV提高的主要來源。Average／Cumulative Turnover為0.45%／4.77x。
+- 相較90天Validation版本（同seed、同600k上限、正式選到300k），Final PV增加495.21、Return增加4.95個百分點、Peak增加717.26，但Max Drawdown惡化1.97個百分點，Sharpe幾乎不變（3.2062→3.2067）。ETH平均權重增加9.00個百分點，USDT下降3.37個百分點。
+- 被併回Train的前45天（2025-03-05 02:00至04-19 00:00）BTC／ETH／LTC／BNB報酬為-3.62%／-27.45%／-27.17%／+0.22%；新Validation後45天則為+25.21%／+63.98%／+18.05%／+12.40%。新Validation明確偏好高ETH策略，而Test的ETH隨後再漲66.67%，形成有利的連續市場regime。
+- 這不構成逐步未來資訊洩漏：45天Validation嚴格早於Test，且Test沒有進入Scaler或梯度。但Validation縮短後對單一近期行情更敏感，450k高ETH模型在Test繼續受益可能含有regime延續的幸運成分，不能只以本次Test宣稱45天必然優於90天。
+- 600k末段診斷（不是正式450k checkpoint）為explained variance 0.4518、value-return correlation 0.7280、Gaussian std 0.1348、sampled/deterministic gap 4.64%、sampled turnover 6.87%；Critic仍在學習，但500k後Validation退化，顯示繼續訓練沒有改善泛化。
+- 相較四幣各25%的Buy-and-Hold Final PV約13,011.44，本輪高1,097.53 USDT、報酬高約10.98個百分點；相較論文A2C Final 13,357高751.97，相較論文Proposed Final 13,929高179.97，但測試資料與流程若不完全相同，不可直接宣稱超越論文。

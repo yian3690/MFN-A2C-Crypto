@@ -32,7 +32,7 @@ from src.experiment_periods import LOOKBACK
 
 class ExperimentConfigTests(unittest.TestCase):
     def test_shared_fair_comparison_budget(self):
-        self.assertEqual(TOTAL_TIMESTEPS, 300_000)
+        self.assertEqual(TOTAL_TIMESTEPS, 600_000)
         self.assertEqual(VALIDATION_FREQUENCY, 50_000)
         self.assertEqual(SEED, 456)
         self.assertEqual(DSR_FORMULA, PAPER_FORMULA)
@@ -47,7 +47,7 @@ class ExperimentConfigTests(unittest.TestCase):
         self.assertTrue(a2c_algorithm_kwargs()["normalize_advantage"])
         self.assertEqual(a2c_policy_kwargs()["log_std_init"], -2.0)
         self.assertEqual(FEATURE_VARIANT, "level_zscore_rs14d")
-        self.assertIn("300k", RUN_TAG)
+        self.assertIn("600k", RUN_TAG)
         self.assertIn("valselect", RUN_TAG)
         self.assertIn("hybrid_paperdsr1_ret50_eta0p005", RUN_TAG)
         self.assertIn("win20", RUN_TAG)
@@ -56,7 +56,7 @@ class ExperimentConfigTests(unittest.TestCase):
         self.assertIn("normadv", RUN_TAG)
         self.assertEqual(LOOKBACK, 20)
         self.assertIn("level_zscore_rs14d", RUN_TAG)
-        self.assertIn("val1080_pv50k", RUN_TAG)
+        self.assertIn("val540_pv50k", RUN_TAG)
 
     def test_data_paths_are_split_consistently(self):
         train = data_paths("train")
@@ -80,8 +80,8 @@ class ExperimentConfigTests(unittest.TestCase):
         try:
             self.assertFalse(a2c_env.random_start)
             self.assertFalse(dqn_env.random_start)
-            self.assertEqual(len(a2c_env.raw_data), 31_364)
-            self.assertEqual(len(dqn_env.raw_data), 31_364)
+            self.assertEqual(len(a2c_env.raw_data), 31_904)
+            self.assertEqual(len(dqn_env.raw_data), 31_904)
             self.assertEqual(a2c_env.action_mode, "logits")
             self.assertEqual(dqn_env.action_mode, "simplex")
             self.assertEqual(a2c_env.dsr_formula, PAPER_FORMULA)
@@ -109,7 +109,7 @@ class ExperimentConfigTests(unittest.TestCase):
         try:
             self.assertFalse(validation_env.random_start)
             self.assertFalse(test_env.random_start)
-            self.assertEqual(len(validation_env.raw_data), 1080)
+            self.assertEqual(len(validation_env.raw_data), 540)
             self.assertEqual(len(test_env.raw_data), 1080)
             self.assertLess(
                 validation_env.raw_data["Open Time"].iloc[-1],

@@ -18,14 +18,14 @@ DATA_START = datetime(2018, 1, 1, tzinfo=UTC)
 DATA_END_INCLUSIVE = datetime(2025, 9, 1, tzinfo=UTC)
 TEST_END_EXCLUSIVE = DATA_END_INCLUSIVE + BAR_INTERVAL
 
-# 固定保留最後1,080筆作Test；再由原Train尾端取1,080筆作Validation。
+# 固定保留最後1,080筆作Test；再由原Train尾端取540筆（45天）作Validation。
 # Test永遠不參與checkpoint選擇，避免實驗層級的資料洩漏。
 TEST_ROWS = 1080
-VALIDATION_ROWS = 1080
+VALIDATION_ROWS = 540
 TEST_START = TEST_END_EXCLUSIVE - TEST_ROWS * BAR_INTERVAL
 
-# 論文原始切分為32,444 development rows＋1,080 Test；加入Validation後，
-# 實際Train為31,364，Validation為1,080，Test仍為1,080。
+# 論文原始切分為32,444 development rows＋1,080 Test；加入45天Validation後，
+# 實際Train為31,904，Validation為540，Test仍為1,080。
 EXPECTED_TOTAL_VALID_ROWS = 33524
 EXPECTED_DEVELOPMENT_ROWS = 32444
 EXPECTED_TRAIN_ROWS = EXPECTED_DEVELOPMENT_ROWS - VALIDATION_ROWS
