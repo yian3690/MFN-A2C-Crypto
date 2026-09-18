@@ -8,6 +8,7 @@ from src.dsr import (
     CANONICAL_FORMULA,
     DEFAULT_WARMUP_STEPS,
     DSRTracker,
+    EWMA_CHANGE_FORMULA,
     LEGACY_EXPANDING_FORMULA,
     PAPER_FORMULA,
     calculate_dsr_series,
@@ -47,7 +48,7 @@ class DSRTestCase(unittest.TestCase):
         second = [tracker.update(value) for value in self.returns]
         np.testing.assert_array_equal(first, second)
 
-    def test_default_uses_paper_ewma_moment_changes(self):
+    def test_default_uses_paper_innovations(self):
         eta = 0.005
         tracker = DSRTracker(eta=eta, warmup_steps=0)
         tracker.update(0.01)
@@ -55,11 +56,11 @@ class DSRTestCase(unittest.TestCase):
         old_a = tracker.first_moment
         old_b = tracker.second_moment
         value = -0.02
-        new_a = old_a + eta * (value - old_a)
-        new_b = old_b + eta * (value**2 - old_b)
+        delta_a = value - old_a
+        delta_b = value**2 - old_b
         expected = (
-            old_b * (new_a - old_a)
-            - 0.5 * old_a * (new_b - old_b)
+            old_b * delta_a
+            - 0.5 * old_a * delta_b
         ) / (old_b - old_a**2) ** 1.5
 
         actual = tracker.update(value)
@@ -73,7 +74,7 @@ class DSRTestCase(unittest.TestCase):
             old_b + eta * (value**2 - old_b),
         )
 
-    def test_paper_reward_is_eta_scaled_canonical_reward(self):
+    def test_paper_reward_matches_canonical_innovation_reward(self):
         eta = 0.005
         paper = DSRTracker(
             eta=eta,
@@ -91,7 +92,27 @@ class DSRTestCase(unittest.TestCase):
 
         paper_reward = paper.update(value)
         canonical_reward = canonical.update(value)
-        self.assertAlmostEqual(paper_reward, eta * canonical_reward)
+        self.assertAlmostEqual(paper_reward, canonical_reward)
+
+    def test_ewma_change_reward_is_eta_scaled_paper_reward(self):
+        eta = 0.005
+        paper = DSRTracker(
+            eta=eta,
+            warmup_steps=0,
+            formula=PAPER_FORMULA,
+        )
+        ewma_change = DSRTracker(
+            eta=eta,
+            warmup_steps=0,
+            formula=EWMA_CHANGE_FORMULA,
+        )
+        paper.update(0.01)
+        ewma_change.update(0.01)
+        value = -0.02
+
+        paper_reward = paper.update(value)
+        ewma_change_reward = ewma_change.update(value)
+        self.assertAlmostEqual(ewma_change_reward, eta * paper_reward)
 
     def test_invalid_formula_is_rejected(self):
         with self.assertRaises(ValueError):

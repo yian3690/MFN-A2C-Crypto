@@ -10,8 +10,9 @@ import numpy as np
 DEFAULT_ETA = 0.005
 DEFAULT_WARMUP_STEPS = 5
 DEFAULT_EPSILON = 1e-12
-PAPER_FORMULA = "paper_legacy"
+PAPER_FORMULA = "paper"
 CANONICAL_FORMULA = "canonical"
+EWMA_CHANGE_FORMULA = "ewma_change"
 LEGACY_EXPANDING_FORMULA = "legacy_expanding"
 DEFAULT_FORMULA = PAPER_FORMULA
 
@@ -20,9 +21,10 @@ DEFAULT_FORMULA = PAPER_FORMULA
 class DSRTracker:
     """Stateful Differential Sharpe Ratio calculator.
 
-    EWMA paper/canonical modes and the archived expanding-mean mode share the
-    same five-step warm-up. The archived mode stores prior returns because its
-    A and B moments are recomputed from the full episode history.
+    Paper/canonical modes use the raw innovations from the published DSR
+    equation. The EWMA-change mode preserves the earlier eta-scaled ablation,
+    while the archived expanding mode recomputes moments from episode history.
+    All modes share the same five-step warm-up.
     """
 
     eta: float = DEFAULT_ETA
@@ -42,11 +44,13 @@ class DSRTracker:
         if self.formula not in {
             PAPER_FORMULA,
             CANONICAL_FORMULA,
+            EWMA_CHANGE_FORMULA,
             LEGACY_EXPANDING_FORMULA,
         }:
             raise ValueError(
                 "formula must be one of "
-                f"'{PAPER_FORMULA}', '{CANONICAL_FORMULA}', or "
+                f"'{PAPER_FORMULA}', '{CANONICAL_FORMULA}', "
+                f"'{EWMA_CHANGE_FORMULA}', or "
                 f"'{LEGACY_EXPANDING_FORMULA}'."
             )
 
@@ -72,13 +76,14 @@ class DSRTracker:
         new_first = old_first + self.eta * innovation_first
         new_second = old_second + self.eta * innovation_second
 
-        if self.formula == PAPER_FORMULA:
-            # Reproduce the archived project/paper implementation: the DSR
-            # numerator uses the actual EWMA moment changes. This scales the
-            # reward by eta relative to the canonical innovation definition.
+        if self.formula == EWMA_CHANGE_FORMULA:
+            # 保留先前的消融版本：把EWMA實際變化放入分子，因此輸出會是
+            # 論文innovation DSR的eta倍。正式paper/canonical模式不走此分支。
             delta_first = new_first - old_first
             delta_second = new_second - old_second
         else:
+            # 論文原式：delta只代表當期報酬對舊動差的innovation；eta僅
+            # 控制下方A、B的EWMA更新速度，不再隱含縮放raw DSR。
             delta_first = innovation_first
             delta_second = innovation_second
 

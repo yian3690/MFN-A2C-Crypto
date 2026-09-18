@@ -1,4 +1,4 @@
-"""使用完整Train資料，單階段訓練離散動作DQN baseline。"""
+"""使用Train資料訓練，並以Validation選擇最佳DQN baseline checkpoint。"""
 
 import sys
 from pathlib import Path
@@ -35,7 +35,7 @@ CHECKPOINTS = ROOT / "checkpoints_dqn"
 
 
 def main():
-    """只用Train訓練，定期以Validation Final PV選最佳模型。"""
+    """在Train訓練，Validation最佳checkpoint直接作為正式模型。"""
     MODELS.mkdir(parents=True, exist_ok=True)
     (LOGS / "tensorboard").mkdir(parents=True, exist_ok=True)
     CHECKPOINTS.mkdir(parents=True, exist_ok=True)
@@ -109,12 +109,14 @@ def main():
     validation.close()
     env.close()
     best_pv, best_step = read_best_validation(validation_log)
+    if best_step is None:
+        raise RuntimeError("沒有產生可用的Validation checkpoint。")
 
     print()
-    print("DQN BASELINE VALIDATION SELECTION FINISHED")
+    print("DQN BASELINE TRAINING FINISHED")
     print(f"Best Validation: step={best_step}, Final PV={best_pv:.2f}")
-    print(f"Saved best model: {output}.zip")
-    print(f"Saved final diagnostic model: {final_output}.zip")
+    print(f"Saved Validation-best model: {output}.zip")
+    print(f"Saved final-step diagnostic model: {final_output}.zip")
 
 
 if __name__ == "__main__":

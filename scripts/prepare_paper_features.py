@@ -232,8 +232,8 @@ def main():
         DATA / 'feature_scaler_development.csv',
         index=False,
     )
-    # 本輪直接使用Validation最佳checkpoint評估Test，不做Stage 2；
-    # 因此正式feature_scaler必須與Train模型一致，只能使用Train統計量。
+    # 正式模型直接使用單階段訓練的Validation最佳checkpoint，因此正式Test
+    # 必須套用相同的Train-only scaler；Validation與Test均不參與擬合。
     train_scaler_table.to_csv(DATA / 'feature_scaler.csv', index=False)
 
     for split_name, mask, scaled_source in [
@@ -267,7 +267,7 @@ def main():
         f'{RELATIVE_STRENGTH_NAME} lookback : '
         f'{RELATIVE_STRENGTH_BARS} bars (14 days at 2H)'
     )
-    print('Stage 1 scaling  : Train-only z-score')
+    print('Training scaling : Train-only z-score')
     print('Test scaling     : Train-only z-score (Validation/Test excluded)')
     print(f'Train scaler     : {DATA / "feature_scaler_train.csv"}')
     print(f'Development scaler: {DATA / "feature_scaler_development.csv"}')

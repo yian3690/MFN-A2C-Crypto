@@ -1,4 +1,4 @@
-"""使用完整Train資料，單階段訓練不含技術指標的A2C。"""
+"""使用Train資料訓練，並以Validation選擇最佳A2C w/o TI checkpoint。"""
 
 import sys
 from datetime import datetime
@@ -39,7 +39,7 @@ CHECKPOINTS = ROOT / "checkpoints_a2c_without_ti"
 
 
 def diagnostics_callback() -> TrainingDiagnosticsCallback:
-    """建立A2C w/o TI單階段rollout診斷檔。"""
+    """建立A2C w/o TI單階段訓練的rollout診斷檔。"""
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     path = (
         LOGS
@@ -51,7 +51,7 @@ def diagnostics_callback() -> TrainingDiagnosticsCallback:
 
 
 def main():
-    """只用Train訓練，定期以Validation Final PV選最佳模型。"""
+    """在Train訓練，Validation最佳checkpoint直接作為正式模型。"""
     MODELS.mkdir(parents=True, exist_ok=True)
     (LOGS / "tensorboard").mkdir(parents=True, exist_ok=True)
     CHECKPOINTS.mkdir(parents=True, exist_ok=True)
@@ -114,18 +114,24 @@ def main():
     model.learn(
         total_timesteps=TOTAL_TIMESTEPS,
         progress_bar=True,
-        callback=[checkpoint, diagnostics_callback(), validation],
+        callback=[
+            checkpoint,
+            diagnostics_callback(),
+            validation,
+        ],
     )
     model.save(str(final_output))
     validation.close()
     env.close()
     best_pv, best_step = read_best_validation(validation_log)
+    if best_step is None:
+        raise RuntimeError("沒有產生可用的Validation checkpoint。")
 
     print()
-    print("A2C WITHOUT TI VALIDATION SELECTION FINISHED")
+    print("A2C WITHOUT TI TRAINING FINISHED")
     print(f"Best Validation: step={best_step}, Final PV={best_pv:.2f}")
-    print(f"Saved best model: {output}.zip")
-    print(f"Saved final diagnostic model: {final_output}.zip")
+    print(f"Saved Validation-best model: {output}.zip")
+    print(f"Saved final-step diagnostic model: {final_output}.zip")
 
 
 if __name__ == "__main__":

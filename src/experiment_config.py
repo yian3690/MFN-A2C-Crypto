@@ -27,24 +27,24 @@ RESULTS = ROOT / "results"
 
 # ---------------------------------------------------------------------------
 # 四種方法共同設定：相同市場資料、隨機種子與環境互動步數。
-# 正式模型直接使用完整Development（原Train＋Validation）依時間順序
-# 單階段訓練，不再用Validation挑選checkpoint或另跑Stage 2。
+# 模型只使用Train訓練，並以Validation Final PV選最佳checkpoint；
+# 不再重新初始化或執行Stage 2。
 # ---------------------------------------------------------------------------
-TOTAL_TIMESTEPS = 300_000
-SEED = 123
+TOTAL_TIMESTEPS = 600_000
+SEED = 456
 LEARNING_RATE = 7e-4
 GAMMA = 0.99
 INITIAL_BALANCE = 10_000.0
 DSR_ETA = 0.005
 DSR_FORMULA = PAPER_FORMULA
-# 恢復legacy expanding消融之前的正式設定：eta仍控制EWMA moments，
-# 只將送入演算法的paper-style step DSR放大200倍；評估DSR不放大。
-DSR_REWARD_SCALE = 200.0
+# raw DSR直接使用論文innovation公式；eta只控制EWMA moments。
+# reward scale與公式分離，1.0代表不再用1/eta補償或隱含縮放。
+DSR_REWARD_SCALE = 1.0
 RETURN_REWARD_SCALE = 50.0
 DSR_REWARD_MODE = "step"
 REWARD_TYPE = "hybrid"
 CHECKPOINT_FREQUENCY = 100_000
-VALIDATION_FREQUENCY = 100_000
+VALIDATION_FREQUENCY = 50_000
 NETWORK_ARCHITECTURE = (64, 64)
 
 
@@ -60,7 +60,7 @@ A2C_ACTION_MODE = "logits"
 A2C_NORMALIZE_ADVANTAGE = True
 # SB3預設為0（std=1）；本輪降低探索噪音，測試訓練抽樣配置與
 # deterministic部署配置差距過大的問題。
-A2C_LOG_STD_INIT = -1.0
+A2C_LOG_STD_INIT = -2
 
 
 # ---------------------------------------------------------------------------
@@ -86,10 +86,23 @@ FEATURE_VARIANT = (
     f"level_zscore_{RELATIVE_STRENGTH_NAME.lower().replace('_', '')}"
 )
 STEP_TAG = f"{TOTAL_TIMESTEPS // 1000}k"
+
+
+def _number_tag(value: float | int) -> str:
+    """將實驗數值轉成穩定檔名片段，例如-2→m2、0.005→0p005。"""
+    number = float(value)
+    sign = "m" if number < 0 else ""
+    magnitude = f"{abs(number):g}".replace(".", "p")
+    return f"{sign}{magnitude}"
+
+
 RUN_TAG = (
-    f"valselect_{STEP_TAG}_hybrid_dsr200_ret50_win20_"
-    f"gaussian_logstdm1_normadv_e1_"
-    f"{FEATURE_VARIANT}_val1080_pv100k"
+    f"valselect_{STEP_TAG}_{REWARD_TYPE}_paperdsr"
+    f"{_number_tag(DSR_REWARD_SCALE)}_ret"
+    f"{_number_tag(RETURN_REWARD_SCALE)}_eta{_number_tag(DSR_ETA)}_"
+    f"win20_gaussian_logstd{_number_tag(A2C_LOG_STD_INIT)}_"
+    f"normadv_e{A2C_UPDATE_EPOCHS}_seed{SEED}_"
+    f"{FEATURE_VARIANT}_val1080_pv50k"
 )
 MFN_MODEL_NAME = f"mfn_a2c_{RUN_TAG}"
 A2C_MODEL_NAME = f"a2c_baseline_{RUN_TAG}"

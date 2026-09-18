@@ -68,21 +68,21 @@ The repository also includes:
 | Decision timing | Observe through `t-1`, rebalance at `Open[t]` |
 | Return interval | `Open[t]` to `Open[t+1]` |
 | Input indicators/features | SMA-20, EMA-20, MACD(12,26,9), RSI-14, Scheme-A RS_14D |
-| Feature scaling | Train-only; Validation and Test always excluded |
+| Feature scaling | Train-only; Validation and Test are always excluded from fitting |
 | A2C hidden layers | 2 |
 | Units per A2C layer | 64 |
 | Learning rate | 7e-4 |
 | Discount factor | 0.99 |
 | Steps per rollout | 540 |
 | Optimizer updates per rollout | Current fair comparison: 1; thesis table: 18 |
-| Training reward | `200 × step DSR + 50 × log(1 + portfolio return)` (Hybrid-50) |
-| DSR update rate | 0.005 (paper mode uses EWMA moment changes) |
+| Training reward | `1 × paper-innovation step DSR + 50 × log(1 + portfolio return)` |
+| DSR update rate | 0.005 (paper mode uses raw innovations; eta only updates EWMA moments) |
 | DSR warm-up | First 5 steps update EWMA moments but return zero reward |
-| Training timesteps | 300,000; validate every 100,000 steps |
+| Training timesteps | Up to 300,000; validate every 50,000 steps |
 | Initial portfolio value | 10,000 |
 | Transaction fee | 0 |
 
-> All four methods train on the chronological 31,364-row Train split for 300,000 steps. Checkpoints at 100k, 200k, and 300k are evaluated on the independent 1,080-row Validation split; the highest Validation Final PV is saved for the one-time final Test evaluation. There is no Stage 2 retraining.
+> All four methods use the same single-stage protocol. Each model trains chronologically on the 31,364-row Train split for at most 300,000 steps and evaluates the independent 1,080-row Validation split every 50,000 steps. The checkpoint with the highest Validation Final PV is saved as the formal model and loaded directly by evaluation. Test remains excluded from scaling, training, feature-horizon choice, and checkpoint selection.
 
 ---
 
@@ -221,7 +221,7 @@ Test:       2025-06-03 02:00 through 2025-09-01 00:00 (1,080 rows)
 First Test trade after lookback: 2025-06-04 18:00 UTC
 ```
 
-All methods use the same protocol: train chronologically on 31,364 rows for at most 300,000 steps, evaluate Validation every 100,000 steps, and save the checkpoint with the highest Validation Final PV. Evaluation scripts load that best checkpoint. Test is excluded from scaling, training, horizon choice, and checkpoint selection.
+All methods use the same single-stage protocol: training runs chronologically on 31,364 Train rows for at most 300,000 steps and evaluates Validation every 50,000 steps. The checkpoint with the highest Validation Final PV is loaded directly by evaluation scripts. Test is excluded from scaling, training, horizon choice, and checkpoint selection.
 
 ---
 
@@ -398,7 +398,7 @@ This thesis-equation extractor is retained as a controlled comparison implementa
 
 Current GitHub-style two-view extractor. It uses separate price and indicator LSTM cells, concatenates previous/current cell states, applies a two-layer attention MLP plus Softmax, builds memory through a two-layer candidate MLP, and conditions two-layer retention/update gates on both attended states and previous memory. Final modality hidden states and shared memory are passed directly to SB3 A2C.
 
-The current Scheme-A experiment trains for at most 300k steps on Train and selects the 100k/200k/300k checkpoint with the highest Validation Final PV. It uses Gaussian logits plus environment Softmax, `log_std_init=-1` (initial std about 0.368), `normalize_advantage=True`, one optimizer epoch per 540-step rollout, and a 20-step (40-hour) observation window. The input is 5 price relatives plus 25 level-and-z-score features: the paper's four indicators plus one past-only cross-asset `RS_14D` feature per asset. Training reward remains `200 × paper-style step DSR + 50 × log(1 + portfolio return)`; reported evaluation DSR remains raw and unscaled. Artifacts use the `valselect_300k_hybrid_dsr200_ret50_win20_gaussian_logstdm1_normadv_e1_level_zscore_rs14d_val1080_pv100k` tag. This is an enhancement/ablation and must not be described as the paper's original four-indicator input.
+The current Scheme-A experiment uses single-stage Validation selection. Training runs for at most 300k steps on Train and evaluates Validation every 50k steps; the checkpoint with the highest Validation Final PV becomes the formal model without a Development retraining stage. It uses Gaussian logits plus environment Softmax, `log_std_init=-2` (initial std about 0.135), `normalize_advantage=True`, one optimizer epoch per 540-step rollout, and a 20-step (40-hour) observation window. The input is 5 price relatives plus 25 level-and-z-score features: the paper's four indicators plus one past-only cross-asset `RS_14D` feature per asset. Raw DSR now uses the published innovations `r-A_old` and `r²-B_old`; `eta=0.005` only updates the EWMA moments. Training reward is `1 × raw DSR + 50 × log(1 + portfolio return)`, while evaluation reports the same unscaled raw DSR. Artifact tags are generated from the actual reward scales, eta, log std and seed. This is an enhancement/ablation and must not be described as the paper's original four-indicator input.
 
 ### `src/multi_epoch_a2c.py`
 
@@ -406,7 +406,7 @@ Supports repeating the standard full-batch SB3 A2C optimizer update for every co
 
 ### `src/dsr.py`
 
-Single EWMA DSR implementation shared by training, evaluation, and Buy-and-Hold. The default `paper_legacy` mode uses `delta_A=A_new-A_old` and `delta_B=B_new-B_old`, matching the archived project behavior and paper-scale output. `eta=0.005` is retained. The canonical innovation form remains selectable for ablation. The first five steps update moments but return zero DSR.
+Single EWMA DSR implementation shared by training, evaluation, and Buy-and-Hold. The default `paper` mode uses the published innovations `delta_A=r-A_old` and `delta_B=r²-B_old`; `eta=0.005` only controls moment updates. The prior eta-scaled implementation remains available as the explicit `ewma_change` ablation, and the archived expanding-mean implementation remains separate. The first five steps update moments but return zero DSR.
 
 ### `src/training_diagnostics.py`
 
