@@ -78,11 +78,11 @@ The repository also includes:
 | Training reward | `1 × paper-innovation step DSR + 50 × log(1 + portfolio return)` |
 | DSR update rate | 0.005 (paper mode uses raw innovations; eta only updates EWMA moments) |
 | DSR warm-up | First 5 steps update EWMA moments but return zero reward |
-| Training timesteps | Up to 600,000; validate every 50,000 steps |
+| Training timesteps | Up to 300,000; validate every 50,000 steps |
 | Initial portfolio value | 10,000 |
 | Transaction fee | 0 |
 
-> All four methods use the same single-stage protocol. Each model trains chronologically on the 31,904-row Train split for at most 600,000 steps and evaluates the independent 540-row (45-day) Validation split every 50,000 steps. The checkpoint with the highest Validation Final PV is saved as the formal model and loaded directly by evaluation. Test remains excluded from scaling, training, feature-horizon choice, and checkpoint selection.
+> All four methods use the same single-stage protocol. Each model trains chronologically on the 31,904-row Train split for at most 300,000 steps and evaluates the independent 540-row (45-day) Validation split every 50,000 steps. The checkpoint with the highest Validation Final PV is saved as the formal model and loaded directly by evaluation. Test remains excluded from scaling, training, feature-horizon choice, and checkpoint selection.
 
 ---
 
@@ -221,7 +221,7 @@ Test:       2025-06-03 02:00 through 2025-09-01 00:00 (1,080 rows)
 First Test trade after lookback: 2025-06-04 18:00 UTC
 ```
 
-All methods use the same single-stage protocol: training runs chronologically on 31,904 Train rows for at most 600,000 steps and evaluates the 45-day Validation split every 50,000 steps. The checkpoint with the highest Validation Final PV is loaded directly by evaluation scripts. Test is excluded from scaling, training, horizon choice, and checkpoint selection.
+All methods use the same single-stage protocol: training runs chronologically on 31,904 Train rows for at most 300,000 steps and evaluates the 45-day Validation split every 50,000 steps. The checkpoint with the highest Validation Final PV is loaded directly by evaluation scripts. Test is excluded from scaling, training, horizon choice, and checkpoint selection.
 
 ---
 
@@ -398,7 +398,7 @@ This thesis-equation extractor is retained as a controlled comparison implementa
 
 Current GitHub-style two-view extractor. It uses separate price and indicator LSTM cells, concatenates previous/current cell states, applies a two-layer attention MLP plus Softmax, builds memory through a two-layer candidate MLP, and conditions two-layer retention/update gates on both attended states and previous memory. Final modality hidden states and shared memory are passed directly to SB3 A2C.
 
-The current Scheme-A experiment uses single-stage Validation selection. Training runs for at most 600k steps on Train and evaluates Validation every 50k steps; the checkpoint with the highest Validation Final PV becomes the formal model without a Development retraining stage. It uses Gaussian logits plus environment Softmax, `log_std_init=-2` (initial std about 0.135), `normalize_advantage=True`, one optimizer epoch per 540-step rollout, and a 20-step (40-hour) observation window. The input is 5 price relatives plus 25 level-and-z-score features: the paper's four indicators plus one past-only cross-asset `RS_14D` feature per asset. Raw DSR now uses the published innovations `r-A_old` and `r²-B_old`; `eta=0.005` only updates the EWMA moments. Training reward is `1 × raw DSR + 50 × log(1 + portfolio return)`, while evaluation reports the same unscaled raw DSR. Artifact tags are generated from the actual reward scales, eta, log std and seed. This is an enhancement/ablation and must not be described as the paper's original four-indicator input.
+The current Scheme-A experiment uses single-stage Validation selection. Training runs for at most 300k steps on Train and evaluates Validation every 50k steps; the checkpoint with the highest Validation Final PV becomes the formal model without a Development retraining stage. It uses Gaussian logits plus environment Softmax, `log_std_init=-2` (initial std about 0.135), `normalize_advantage=True`, one optimizer epoch per 540-step rollout, and a 20-step (40-hour) observation window. The input is 5 price relatives plus 25 level-and-z-score features: the paper's four indicators plus one past-only cross-asset `RS_14D` feature per asset. Raw DSR now uses the published innovations `r-A_old` and `r²-B_old`; `eta=0.005` only updates the EWMA moments. Training reward is `1 × raw DSR + 50 × log(1 + portfolio return)`, while evaluation reports the same unscaled raw DSR. Artifact tags are generated from the actual reward scales, eta, log std and seed. This is an enhancement/ablation and must not be described as the paper's original four-indicator input.
 
 ### `src/multi_epoch_a2c.py`
 
@@ -410,7 +410,7 @@ Single EWMA DSR implementation shared by training, evaluation, and Buy-and-Hold.
 
 ### `src/training_diagnostics.py`
 
-The MFN and A2C training scripts write one CSV row per rollout under `logs/training_diagnostics/`. In addition to reward, PV, turnover, allocation and Actor/Critic losses, they record per-asset Gaussian exploration scale, sampled-versus-deterministic allocation distance, Advantage/return-target statistics, Critic target correlation/RMSE, and DSR/log-return sign conflict. MFN additionally exposes extractor parameter/gradient information. Validation scores are saved separately under `logs/validation/`.
+The A2C baseline scripts write one diagnostic CSV row per rollout under `logs/training_diagnostics/`. MFN writes one row every five rollouts to reduce read-only diagnostic overhead and trains on CPU because batch-one recurrent inference is faster than CUDA on the current machine. This sampling frequency does not alter environment steps, rewards, optimizer updates, Validation, or checkpoints. Diagnostics include reward, PV, turnover, allocation and Actor/Critic losses, per-asset Gaussian exploration scale, sampled-versus-deterministic allocation distance, Advantage/return-target statistics, Critic target correlation/RMSE, and DSR/log-return sign conflict. MFN additionally exposes extractor parameter/gradient information. Validation scores are saved separately under `logs/validation/`.
 
 All four model evaluators also save per-step `asset_return_*`, `return_contribution_*`, and `pnl_contribution_*` columns. The terminal report shows each underlying asset's compounded return and path-dependent PnL contribution; their PnL total reconciles exactly to `Final PV - Initial PV` in the no-fee environment.
 

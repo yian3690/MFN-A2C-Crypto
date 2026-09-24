@@ -1,4 +1,4 @@
-﻿.venv/
+.venv/
 __pycache__/
 *.pyc
 tensorboard/
@@ -13,9 +13,4 @@ formal_metrics.csv
 mfn_vs_buyhold.csv
 *.png
 
-# Track only the retrained formal models; keep old/experimental ZIP files ignored.
-!models/
-models/*
-!models/mfn_a2c_formal.zip
-!models/a2c_baseline.zip
-!models/dqn_baseline.zip
+# 所有模型 ZIP 一律忽略；不再例外追蹤任何正式模型 ZIP。

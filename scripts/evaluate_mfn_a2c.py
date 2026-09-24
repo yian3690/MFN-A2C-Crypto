@@ -18,9 +18,9 @@ from src.experiment_config import (
     LOGS,
     MFN_MODEL_NAME,
     MFN_RESULT_NAME,
+    MFN_RUN_TAG,
     MODELS,
     RESULTS,
-    RUN_TAG,
     make_portfolio_env,
 )
 from src.evaluation_metrics import (
@@ -182,7 +182,7 @@ def main():
 
     diagnostics_path = latest_diagnostics(
         LOGS / "training_diagnostics",
-        f"mfn_a2c_{RUN_TAG}_*.csv",
+        f"mfn_a2c_{MFN_RUN_TAG}_*.csv",
     )
     if diagnostics_path is not None:
         training_summary, warnings = diagnose_training_file(diagnostics_path)

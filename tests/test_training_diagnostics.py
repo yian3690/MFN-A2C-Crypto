@@ -6,10 +6,24 @@ from pathlib import Path
 
 import pandas as pd
 
-from src.training_diagnostics import diagnose_training_file
+from src.training_diagnostics import TrainingDiagnosticsCallback, diagnose_training_file
 
 
 class TrainingDiagnosticsTests(unittest.TestCase):
+    def test_record_frequency_must_be_positive(self):
+        with self.assertRaises(ValueError):
+            TrainingDiagnosticsCallback(
+                "unused.csv",
+                record_every_rollouts=0,
+            )
+
+    def test_record_frequency_is_configurable(self):
+        callback = TrainingDiagnosticsCallback(
+            "unused.csv",
+            record_every_rollouts=5,
+        )
+        self.assertEqual(callback.record_every_rollouts, 5)
+
     def test_flags_weak_critic_and_static_equal_weight_policy(self):
         frame = pd.DataFrame(
             {

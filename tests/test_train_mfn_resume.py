@@ -1,4 +1,4 @@
-"""Tests for MFN checkpoint discovery used by ``--resume``."""
+"""固定最後一步MFN的checkpoint續訓測試。"""
 
 import tempfile
 import unittest
@@ -15,7 +15,6 @@ class TrainMFNResumeTests(unittest.TestCase):
     def test_checkpoint_timesteps_rejects_incompatible_models(self):
         valid = Path(f"{CHECKPOINT_PREFIX}_200000_steps.zip")
         incompatible = Path("MFN_A2C_900000_steps.zip")
-
         self.assertEqual(checkpoint_timesteps(valid), 200_000)
         self.assertIsNone(checkpoint_timesteps(incompatible))
 
@@ -27,12 +26,22 @@ class TrainMFNResumeTests(unittest.TestCase):
             unrelated = root / "MFN_A2C_999999_steps.zip"
             for path in (newer, unrelated, older):
                 path.touch()
-
             self.assertEqual(find_latest_checkpoint(root), newer)
 
     def test_find_latest_returns_none_without_compatible_checkpoint(self):
         with tempfile.TemporaryDirectory() as directory:
             self.assertIsNone(find_latest_checkpoint(directory))
+
+    def test_checkpoint_above_target_is_not_loaded(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            within = root / f"{CHECKPOINT_PREFIX}_300000_steps.zip"
+            above = root / f"{CHECKPOINT_PREFIX}_600000_steps.zip"
+            within.touch()
+            above.touch()
+            self.assertEqual(
+                find_latest_checkpoint(root, max_timesteps=300_000), within
+            )
 
     def test_checkpoints_from_other_experiments_cannot_mix(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -43,12 +52,10 @@ class TrainMFNResumeTests(unittest.TestCase):
             compatible.touch()
             incompatible.touch()
             self.assertEqual(
-                find_latest_checkpoint(root, CHECKPOINT_PREFIX),
-                compatible,
+                find_latest_checkpoint(root, CHECKPOINT_PREFIX), compatible
             )
             self.assertEqual(
-                find_latest_checkpoint(root, incompatible_prefix),
-                incompatible,
+                find_latest_checkpoint(root, incompatible_prefix), incompatible
             )
 
 

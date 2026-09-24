@@ -850,3 +850,57 @@ Turnover、explained variance、value-return correlation、Gaussian std與sample
 - 這不構成逐步未來資訊洩漏：45天Validation嚴格早於Test，且Test沒有進入Scaler或梯度。但Validation縮短後對單一近期行情更敏感，450k高ETH模型在Test繼續受益可能含有regime延續的幸運成分，不能只以本次Test宣稱45天必然優於90天。
 - 600k末段診斷（不是正式450k checkpoint）為explained variance 0.4518、value-return correlation 0.7280、Gaussian std 0.1348、sampled/deterministic gap 4.64%、sampled turnover 6.87%；Critic仍在學習，但500k後Validation退化，顯示繼續訓練沒有改善泛化。
 - 相較四幣各25%的Buy-and-Hold Final PV約13,011.44，本輪高1,097.53 USDT、報酬高約10.98個百分點；相較論文A2C Final 13,357高751.97，相較論文Proposed Final 13,929高179.97，但測試資料與流程若不完全相同，不可直接宣稱超越論文。
+
+## 47. 2026-09-18：A2C w/o TI、45天Validation、300k結果
+
+- 設定與45天Validation資料切分一致，但模型經`PriceOnlyWrapper`只取得5個價格特徵，不使用SMA、EMA、MACD、RSI或RS_14D。訓練上限為300k，和第46節A2C baseline的600k上限不同，尚非完全相同預算比較。
+- Validation Final PV於50k／100k／150k／200k／250k／300k為12,264.72／12,347.53／12,381.01／12,402.04／12,431.01／12,419.49；最佳checkpoint為250k，正式Test未使用300k final模型。
+- Test結果：Final PV 12,171.27、Return 21.71%、Peak PV 13,143.43、Max Drawdown -12.27%、Sharpe 2.4673；raw paper Peak／Final Cumulative DSR為40.6025／12.9357，乘eta僅作舊尺度換算約0.2030／0.0647。
+- 平均配置接近等權：BTC 19.92%、ETH 19.32%、LTC 19.27%、BNB 21.52%、USDT 19.97%；Average／Cumulative Turnover卻高達10.39%／109.99x。雖然環境無交易成本，高換手仍顯示策略頻繁且無效地偏離再回到等權。
+- 相對強勢rank correlation在12小時／1日／3日／7日僅-0.002／0.013／0.033／0.036，下一期winner權重19.80%甚至低於loser的19.88%；符合模型沒有RS_14D或TI可用，未形成有效強勢配置。
+- 本輪低於四幣各25% Buy-and-Hold約13,011.44，也低於五資產各20% Buy-and-Hold 12,409.15與每期固定再平衡20%的12,348.98。主要原因是約20%資金長期留在USDT、ETH維持約19%而未隨上漲漂移，且動態偏移時機沒有產生額外報酬。
+- 相較第46節完整特徵A2C，Final PV低1,937.70、Return低19.38個百分點；完整模型ETH平均權重56.21%且turnover 4.77x，w/o TI則ETH 19.32%且turnover 109.99x，顯示技術／RS模態對本輪配置具有重大影響。但因兩者訓練上限不同，正式消融結論仍應把w/o TI也跑到600k並由相同Validation規則選模。
+- 300k末段診斷（不是正式250k checkpoint）explained variance僅0.0787、value-return correlation 0.2886，遠弱於完整A2C；Gaussian std 0.1358與gap 4.82%正常，因此瓶頸較像觀測資訊不足與Critic難以預測，而非探索噪音失控。
+- 對照論文A2C w/o TI Final／Peak PV 11,959／13,120，本輪高212.27／23.43，數值接近但資料期間與Buy-and-Hold基準不一致，不能視為完整重現。
+
+## 48. 2026-09-18：MFN-A2C GitHub-style、45天Validation、300k結果
+
+- 使用GitHub-style兩模態MFN、paper raw DSR Hybrid reward、seed456、Window 20、`log_std_init=-2`、Advantage normalization、epoch 1與45天Validation；訓練上限300k。
+- Validation Final PV於50k／100k／150k／200k／250k／300k為12,185.90／12,268.87／12,105.10／12,248.52／12,226.47／12,318.26；300k為全程最佳，正式Test與300k末段診斷對應同一checkpoint。最佳點位於預算邊界，與w/o TI在250k見頂不同，不能排除MFN尚未充分訓練。
+- Test結果：Final PV 12,697.96、Return 26.98%、Peak PV 13,533.65、Max Drawdown -12.47%、Sharpe 3.0245；raw paper Peak／Final Cumulative DSR為41.2654／14.9189，乘eta僅作舊尺度換算約0.2063／0.0746。
+- 平均配置接近等權：BTC 18.78%、ETH 20.46%、LTC 19.04%、BNB 20.42%、USDT 21.29%；Average／Cumulative Turnover為0.95%／10.11x。Test期間ETH上漲66.67%，但MFN沒有形成高ETH結構性配置，ETH只貢獻1,366.29 USDT。
+- 相對強勢rank correlation在12小時／1日尚有0.125／0.105，但3日／7日降至0.032／0.023；模型主要對短期變化有微弱反應，沒有充分利用RS_14D的中期橫截面訊號。
+- 診斷顯示MFN並未斷線：gradient norm 0.492、explained variance 0.3228、value-return correlation 0.5973均為有效訊號；瓶頸是deterministic allocation entropy 0.9861、temporal variation 0.0170，策略輸出過度分散且變化小。這較像複雜編碼器的樣本效率／過度平滑問題，而非梯度完全消失。
+- 同一45天Validation下，完整A2C在300k的Validation PV為12,862.87，MFN為12,318.26，差544.61；兩者50k僅差22.80，之後baseline持續學到高ETH配置而MFN停滯，支持端到端MFN收斂較慢的判斷。
+- 相較四幣各25% Buy-and-Hold約13,011.44，MFN低313.48；但高於五資產各20% Buy-and-Hold 12,409.15約288.81，也高於A2C w/o TI 12,171.27約526.69。MFN不是完全無效，而是偏保守、沒有捕捉本期ETH集中報酬。
+- 下一個最小變因實驗應維持所有設定，只把MFN上限擴至600k並繼續每50k由Validation選模；若Validation仍停滯且配置維持等權，再增加MFN feature activation variance、attention entropy與memory update幅度診斷，而不是立即改reward或架構。
+
+## 49. 2026-09-18：MFN改用CPU並降低診斷頻率
+
+- 本機為RTX 3060 Laptop GPU，但GitHub-style MFN含20步`LSTMCell`／memory Python loop，rollout採樣時每次只推論batch 1。實測純前向batch 1為CPU 12.86ms、GPU 36.35ms；batch 540前向＋反向則CPU 369.50ms、GPU 120.10ms。由於每540次batch-1採樣才做一次更新，整體MFN特徵擷取計算估計CPU較有利。
+- MFN的新模型與resume固定`device="cpu"`；A2C baseline、A2C w/o TI與DQN仍維持原共用`device="auto"`，不受影響。Evaluation本來就是CPU。
+- MFN診斷由每個rollout改為每5個rollout記錄一次；callback在未記錄的rollout直接跳過info蒐集、policy distribution、Critic與MFN gradient統計，但A2C仍每個rollout照常執行環境採樣與optimizer更新。
+- Validation仍每50k執行、checkpoint仍依既有頻率保存，reward、模型輸入、Actor/Critic、MFN架構與隨機種子均不變。代價是診斷時間解析度降為原本五分之一，短暫尖峰可能不會被CSV捕捉，且摘要最後20列代表約100個rollout而非20個。
+- 為避免覆蓋GPU／逐rollout診斷實驗，MFN專屬tag追加`cpu_diag5`；其他方法沿用原`RUN_TAG`。
+
+## 50. 2026-09-18：MFN-A2C支援300k延長至600k續訓
+
+- 將正式輸出`RUN_TAG`與checkpoint相容標籤拆開：正式模型、結果與診斷仍保留`300k`／`600k`，但`MFN_RESUME_TAG`不包含目標總步數，因此只改`TOTAL_TIMESTEPS`不會使舊checkpoint失效。
+- 續訓相容標籤仍包含MFN架構版本、reward與scale、eta、Window、Gaussian log std、Advantage normalization、epochs、seed、特徵版本與Validation切分；這些條件不同的checkpoint不會混用。CPU/GPU與診斷頻率不影響模型張量，因此不列入相容性判斷。
+- `python scripts/train_mfn_a2c.py --resume`會讀取不超過目前目標步數的最新相容checkpoint。例如設定600k並載入300k時，顯示`Completed=300,000`、`Remaining=300,000`，並以`reset_num_timesteps=False`延續模型、optimizer及全域步數。
+- 新checkpoint改用不含目標步數的固定prefix；同時向下相容既有`MFN_A2C_VALSELECT_300K_..._300000_steps.zip`，不必重新訓練或手動重新命名舊檔。
+- Validation CSV與Validation最佳模型改用跨目標步數的固定續訓名稱。首次載入舊300k checkpoint時，會複製舊Validation紀錄與最佳模型；正式完成後再輸出一份含目前300k／600k標籤的模型，避免實驗結果互相覆蓋。
+- 若使用`--resume`卻找不到相容checkpoint，程式現在會直接停止並報錯，不再悄悄從零開始；超過目前目標步數的checkpoint也不會被載入。
+- 驗證：實際載入目前既有300k相容checkpoint，確認`num_timesteps=300000`且optimizer含37筆狀態；完整48項unittest全數通過，包含舊Validation紀錄／最佳模型搬移測試，`py_compile`與`git diff --check`亦通過。此次只新增續訓能力，`TOTAL_TIMESTEPS`仍維持300,000，reward與模型架構沒有改動。
+
+## 51. 2026-09-19：A2C baseline純paper DSR、45天Validation、300k結果
+
+- 設定與第46節相同的2H、Window 20、RS_14D、seed456、`log_std_init=-2`、Advantage normalization、epoch 1與45天Validation；只將`RETURN_REWARD_SCALE`由50改為0。雖然`REWARD_TYPE`字串仍為`hybrid`，數值上reward等於`1×paper raw DSR`。
+- Validation Final PV於50k／100k／150k／200k／250k／300k為12,250.95／12,228.93／12,479.77／12,545.32／12,511.38／12,853.37；最佳checkpoint為300k，顯示純DSR在預算邊界仍有改善。
+- Test結果：Final PV 13,230.84、Return 32.31%、Peak PV 14,176.63、Max Drawdown -13.45%、Sharpe 3.2169；raw paper Peak／Final Cumulative DSR為43.0646／15.5344。
+- 平均配置為BTC 19.63%、ETH 32.24%、LTC 13.11%、BNB 17.53%、USDT 17.49%；ETH貢獻2,011.78 USDT，占總獲利62.27%。Average／Cumulative Turnover為1.03%／10.93x。
+- 相對強勢rank correlation在12小時／1日／3日／7日為0.116／0.110／-0.015／0.088，較偏短期強勢；下一期winner／loser權重20.73%／19.72%，沒有顯示明顯未來資訊利用。
+- 與第46節Hybrid-50的600k Validation選模結果相比，純DSR Final PV低878.13、Return低8.78個百分點，但Max Drawdown改善4.27個百分點，Sharpe略高0.0102。兩者訓練上限與正式選中步數不同，這不是完全公平的單變因比較。
+- 在相同300k節點，Hybrid-50的Validation PV為12,862.87，純DSR為12,853.37，只差9.50（約0.07%）；Validation幾乎無法判定兩者優劣。Test差異主要來自純DSR的ETH平均權重較低、USDT較高，符合DSR偏好風險調整後報酬而非單純追求資產成長。
+- 純DSR仍高於四幣各25% Buy-and-Hold約219.40 USDT，也高於五資產各20% Buy-and-Hold約821.69 USDT；但低於論文A2C Final PV 13,357約126.16，低於論文Proposed 13,929約698.16。
+- 訓練診斷正常：reward std 1.0710、p99 3.5556、explained variance 0.3440、value-return correlation 0.6929、Gaussian std 0.1351、sampled/deterministic gap 4.71%、entropy 0.9551、sampled turnover 7.01%。沒有單一失敗指標；主要是策略較分散、較保守，而非Actor或Critic失效。

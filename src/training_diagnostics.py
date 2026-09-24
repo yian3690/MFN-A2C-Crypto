@@ -24,19 +24,39 @@ def _finite_scalar(value, default=np.nan) -> float:
 
 
 class TrainingDiagnosticsCallback(BaseCallback):
-    """Persist one diagnostic row per rollout to CSV and TensorBoard."""
+    """Periodically persist rollout diagnostics to CSV and TensorBoard.
 
-    def __init__(self, output_path: str | Path, verbose: int = 0):
+    ``record_every_rollouts`` only controls this read-only observer.  It does
+    not skip environment steps, rollout collection, optimizer updates,
+    Validation, or checkpoint callbacks.
+    """
+
+    def __init__(
+        self,
+        output_path: str | Path,
+        verbose: int = 0,
+        record_every_rollouts: int = 1,
+    ):
+        if (
+            not isinstance(record_every_rollouts, int)
+            or record_every_rollouts < 1
+        ):
+            raise ValueError("record_every_rollouts must be a positive integer.")
         super().__init__(verbose=verbose)
         self.output_path = Path(output_path)
+        self.record_every_rollouts = record_every_rollouts
         self._values: dict[str, list] = defaultdict(list)
         self._pending: dict[str, float] | None = None
         self._header_written = False
+        self._rollout_count = 0
+        self._record_current_rollout = False
 
     def _on_training_start(self) -> None:
         self.output_path.parent.mkdir(parents=True, exist_ok=True)
 
     def _on_step(self) -> bool:
+        if not self._record_current_rollout:
+            return True
         for info in self.locals.get("infos", []):
             if "portfolio_return" in info:
                 self._values["portfolio_return"].append(info["portfolio_return"])
@@ -186,6 +206,11 @@ class TrainingDiagnosticsCallback(BaseCallback):
         return metrics
 
     def _on_rollout_end(self) -> None:
+        if not self._record_current_rollout:
+            self._values = defaultdict(list)
+            self._rollout_count += 1
+            return
+
         rewards = np.asarray(self.model.rollout_buffer.rewards, dtype=float).reshape(-1)
         abs_rewards = np.abs(rewards)
         row: dict[str, float] = {
@@ -275,6 +300,7 @@ class TrainingDiagnosticsCallback(BaseCallback):
 
         self._pending = row
         self._values = defaultdict(list)
+        self._rollout_count += 1
 
     def _parameter_metrics(self) -> dict[str, float]:
         extractor = self.model.policy.features_extractor
@@ -342,6 +368,9 @@ class TrainingDiagnosticsCallback(BaseCallback):
         # This runs after the preceding rollout's optimizer update, allowing
         # its losses and resulting gradients to be attached to that rollout.
         self._finalize_pending()
+        self._record_current_rollout = (
+            self._rollout_count % self.record_every_rollouts == 0
+        )
 
     def _on_training_end(self) -> None:
         self._finalize_pending()
@@ -453,7 +482,7 @@ def print_training_diagnostics_summary(
     """將最重要的探索、Critic與reward衝突診斷輸出到終端機。"""
     print("TRAINING DIAGNOSTICS")
     print(f"Source CSV                    : {path}")
-    print(f"Recorded rollouts             : {int(summary['rollouts'])}")
+    print(f"Recorded diagnostic rows      : {int(summary['rollouts'])}")
     fields = (
         ("Recent reward std", "reward_std_recent", ".6g"),
         ("Recent |reward| p99", "reward_abs_p99_recent", ".6g"),
