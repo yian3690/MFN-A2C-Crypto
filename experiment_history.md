@@ -1,6 +1,6 @@
 # 實驗與程式修改歷史
 
-> 最後更新：2026-09-15  
+> 最後更新：2026-09-15
 > 本文件整理本專案至今的重要程式修改、實驗設定與單次執行結果。強化學習結果會受隨機種子、資料版本及環境實作影響；除非明確標示為相同設定，表中的不同結果不可直接當作正式模型排名。
 
 ## 1. 研究目的與方法
@@ -464,8 +464,6 @@ python scripts\compare_experiment3.py
 - canonical模式仍保留供理論對照與消融，不刪除既有模型或結果。
 - MFN正式模型改名為`models/mfn_a2c_github2_5x20_300k_paper_dsr.zip`；checkpoint、診斷CSV及結果CSV同步使用`PAPER_DSR`/`paper_dsr`名稱，避免續訓或評估時誤載canonical模型。
 - 這是reward尺度與訓練目標變更，不能從canonical checkpoint使用`--resume`；必須重新開始paper DSR訓練。
-<<<<<<< Updated upstream
-=======
 
 ## 18. 2026-09-16：建立四模型共用公平比較設定
 
@@ -995,4 +993,17 @@ Turnover、explained variance、value-return correlation、Gaussian std與sample
 - README與CODE_GUIDE已同步更新；模型ZIP、checkpoint、歷史results/logs與`experiment_history.md`均未刪除。
 - 驗證：Python compileall通過、40項unittest全數通過、舊extractor/import/設定引用搜尋為0；現有DMAN模型可成功載入20×30 observation並產生5維動作。
 - 驗證當下config為600k、`RETURN_REWARD_SCALE=0.0`；README改為引用動態config，避免使用者調整reward後文件失真。
->>>>>>> Stashed changes
+
+## 63. 2026-09-24：修復main中的stash衝突與缺失核心模組
+
+- `stash apply`後有9個Python檔案殘留`<<<<<<< Updated upstream`、`=======`與`>>>>>>> Stashed changes`，並被提交至main，造成`src/portfolio_env_sb3.py` SyntaxError；這些檔案不是純舊版，而是新舊內容混合。
+- 從已確認無衝突的`stash@{0}`選擇性恢復9個受損檔案，沒有重新套用整份stash；全專案Python衝突標記已降為0。
+- 測試進一步發現main只取得stash的未提交差異，未取得實驗branch既有commit中的核心程式；因此補回`dman_temporal_attention_extractor.py`、新版raw DSR、完整evaluation metrics、technical indicators及對應測試，並刪除失效的舊`test_train_mfn_resume.py`。
+- 驗證：compileall通過、40項unittest全數通過、`git diff --check`通過。
+- 實際重新執行`python scripts/evaluate_dman_temporal_attention_a2c.py`成功；目前config為600k、RETURN_REWARD_SCALE=0，回測Final PV 14,983.94、Return 49.84%、Peak PV 15,770.74、Max Drawdown -16.92%、Sharpe 2.5720。
+## 64. 2026-09-24：清除重複與失效的舊Python入口
+
+- 刪除已被現行4H流程取代的9個舊腳本：`baseline_buy_hold.py`、`compare_all_methods.py`、`evaluate_a2c_baseline.py`、`evaluate_dqn_baseline.py`、`evaluate_experiment3.py`、`prepare_paper_features.py`、`train_a2c_baseline.py`、`train_dqn_baseline.py`與`train_experiment3.py`。
+- 舊Experiment 3入口仍匯入已移除的`mfn_sb3_extractor`；舊A2C baseline也仍標示2H與固定18 epochs，因此不可再作為目前4H正式入口。
+- 保留`check_alignment.py`，因其仍可驗證目前Train/Test的timestamp、raw price、price feature與technical feature逐列對齊，不屬於舊模型流程。
+- README與CODE_GUIDE改為只列現行4H入口；`evaluation_metrics.py`的資料準備提示同步改為`prepare_features_4h.py`。

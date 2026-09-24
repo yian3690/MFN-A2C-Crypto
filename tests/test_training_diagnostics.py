@@ -6,12 +6,10 @@ from pathlib import Path
 
 import pandas as pd
 
-from src.training_diagnostics import diagnose_training_file
+from src.training_diagnostics import TrainingDiagnosticsCallback, diagnose_training_file
 
 
 class TrainingDiagnosticsTests(unittest.TestCase):
-<<<<<<< Updated upstream
-=======
     def test_record_frequency_must_be_positive(self):
         with self.assertRaises(ValueError):
             TrainingDiagnosticsCallback("unused.csv", record_every_rollouts=0)
@@ -20,7 +18,6 @@ class TrainingDiagnosticsTests(unittest.TestCase):
         callback = TrainingDiagnosticsCallback("unused.csv", record_every_rollouts=5)
         self.assertEqual(callback.record_every_rollouts, 5)
 
->>>>>>> Stashed changes
     def test_flags_weak_critic_and_static_equal_weight_policy(self):
         frame = pd.DataFrame({
             "timesteps": [540, 1080],
@@ -34,11 +31,7 @@ class TrainingDiagnosticsTests(unittest.TestCase):
             "turnover_mean": [0.02, 0.02],
         })
         with tempfile.TemporaryDirectory() as directory:
-<<<<<<< Updated upstream
-            path = Path(directory) / "diagnostics.csv"
-=======
             path = Path(directory) / "dman_attention_diagnostics.csv"
->>>>>>> Stashed changes
             frame.to_csv(path, index=False)
             summary, warnings = diagnose_training_file(path)
 
@@ -50,12 +43,6 @@ class TrainingDiagnosticsTests(unittest.TestCase):
         self.assertIn("equal weight", combined)
         self.assertIn("barely changes", combined)
 
-<<<<<<< Updated upstream
-
-if __name__ == "__main__":
-    unittest.main()
-
-=======
     def test_baseline_without_trainable_extractor_has_no_gradient_warning(self):
         frame = pd.DataFrame({
             "timesteps": [540],
@@ -93,4 +80,3 @@ if __name__ == "__main__":
 
 if __name__ == "__main__":
     unittest.main()
->>>>>>> Stashed changes
