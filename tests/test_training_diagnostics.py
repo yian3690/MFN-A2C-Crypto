@@ -10,22 +10,35 @@ from src.training_diagnostics import diagnose_training_file
 
 
 class TrainingDiagnosticsTests(unittest.TestCase):
+<<<<<<< Updated upstream
+=======
+    def test_record_frequency_must_be_positive(self):
+        with self.assertRaises(ValueError):
+            TrainingDiagnosticsCallback("unused.csv", record_every_rollouts=0)
+
+    def test_record_frequency_is_configurable(self):
+        callback = TrainingDiagnosticsCallback("unused.csv", record_every_rollouts=5)
+        self.assertEqual(callback.record_every_rollouts, 5)
+
+>>>>>>> Stashed changes
     def test_flags_weak_critic_and_static_equal_weight_policy(self):
-        frame = pd.DataFrame(
-            {
-                "timesteps": [540, 1080],
-                "reward_std": [1e-6, 1e-6],
-                "reward_abs_p99": [1e-5, 1e-5],
-                "explained_variance": [-0.2, -0.1],
-                "mfn_gradient_norm": [1e-10, 1e-10],
-                "allocation_entropy_mean": [0.999, 0.999],
-                "policy_equal_weight_l1_mean": [0.01, 0.01],
-                "policy_weight_temporal_std_mean": [0.001, 0.001],
-                "turnover_mean": [0.02, 0.02],
-            }
-        )
+        frame = pd.DataFrame({
+            "timesteps": [540, 1080],
+            "reward_std": [1e-6, 1e-6],
+            "reward_abs_p99": [1e-5, 1e-5],
+            "explained_variance": [-0.2, -0.1],
+            "extractor_gradient_norm": [1e-10, 1e-10],
+            "allocation_entropy_mean": [0.999, 0.999],
+            "policy_equal_weight_l1_mean": [0.01, 0.01],
+            "policy_weight_temporal_std_mean": [0.001, 0.001],
+            "turnover_mean": [0.02, 0.02],
+        })
         with tempfile.TemporaryDirectory() as directory:
+<<<<<<< Updated upstream
             path = Path(directory) / "diagnostics.csv"
+=======
+            path = Path(directory) / "dman_attention_diagnostics.csv"
+>>>>>>> Stashed changes
             frame.to_csv(path, index=False)
             summary, warnings = diagnose_training_file(path)
 
@@ -37,7 +50,47 @@ class TrainingDiagnosticsTests(unittest.TestCase):
         self.assertIn("equal weight", combined)
         self.assertIn("barely changes", combined)
 
+<<<<<<< Updated upstream
 
 if __name__ == "__main__":
     unittest.main()
 
+=======
+    def test_baseline_without_trainable_extractor_has_no_gradient_warning(self):
+        frame = pd.DataFrame({
+            "timesteps": [540],
+            "reward_std": [1.0],
+            "reward_abs_p99": [2.0],
+            "explained_variance": [0.5],
+            "allocation_entropy_mean": [0.8],
+            "policy_equal_weight_l1_mean": [0.2],
+            "policy_weight_temporal_std_mean": [0.02],
+            "turnover_mean": [0.02],
+        })
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "a2c_baseline_diagnostics.csv"
+            frame.to_csv(path, index=False)
+            summary, warnings = diagnose_training_file(path)
+
+        self.assertTrue(pd.isna(summary["extractor_gradient_norm_recent"]))
+        self.assertNotIn("gradients", " ".join(warnings))
+
+    def test_reads_legacy_mfn_gradient_column(self):
+        frame = pd.DataFrame({
+            "timesteps": [540],
+            "reward_std": [1.0],
+            "reward_abs_p99": [2.0],
+            "explained_variance": [0.5],
+            "mfn_gradient_norm": [0.25],
+        })
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "mfn_a2c_legacy.csv"
+            frame.to_csv(path, index=False)
+            summary, _ = diagnose_training_file(path)
+
+        self.assertEqual(summary["extractor_gradient_norm_recent"], 0.25)
+
+
+if __name__ == "__main__":
+    unittest.main()
+>>>>>>> Stashed changes

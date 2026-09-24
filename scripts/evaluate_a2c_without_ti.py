@@ -1,3 +1,4 @@
+<<<<<<< Updated upstream
 """Backtest the price-only A2C configuration from Experiment 1."""
 
 import sys
@@ -235,6 +236,10 @@ def main():
 
     env.close()
 
+=======
+"""評估 4H Experiment 1 A2C without TI。"""
+from evaluate_common import evaluate
+>>>>>>> Stashed changes
 
 if __name__ == "__main__":
-    main()
+    evaluate("without_ti")

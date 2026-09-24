@@ -1,10 +1,22 @@
-"""Shared feature-schema constants for the paper-reproduction experiments."""
+"""Shared feature-schema constants for the 4H paper-reproduction experiments."""
 
 CRYPTO_ASSETS = ("BTC", "ETH", "LTC", "BNB")
 PORTFOLIO_ASSETS = (*CRYPTO_ASSETS, "USDT")
+<<<<<<< Updated upstream
 TECHNICAL_INDICATORS = ("SMA20", "EMA20", "MACD", "RSI14")
 
 PRICE_DIM = len(PORTFOLIO_ASSETS)
 INDICATOR_DIM = len(PORTFOLIO_ASSETS) * len(TECHNICAL_INDICATORS)
 TOTAL_FEATURE_DIM = PRICE_DIM + INDICATOR_DIM
 
+=======
+RELATIVE_STRENGTH_DAYS = 14
+RELATIVE_STRENGTH_NAME = f"RS_{RELATIVE_STRENGTH_DAYS}D"
+TECHNICAL_INDICATORS = (
+    "SMA20", "EMA20", "MACD", "RSI14", RELATIVE_STRENGTH_NAME,
+)
+
+PRICE_DIM = len(PORTFOLIO_ASSETS)
+INDICATOR_DIM = len(PORTFOLIO_ASSETS) * len(TECHNICAL_INDICATORS)
+TOTAL_FEATURE_DIM = PRICE_DIM + INDICATOR_DIM
+>>>>>>> Stashed changes

@@ -1,3 +1,4 @@
+<<<<<<< Updated upstream
 """Train the price-only A2C ablation for Experiment 1."""
 
 import sys
@@ -166,6 +167,10 @@ def main():
 
     env.close()
 
+=======
+"""訓練 4H Experiment 1 A2C without technical indicators。"""
+from train_common import train
+>>>>>>> Stashed changes
 
 if __name__ == "__main__":
-    main()
+    train("without_ti")

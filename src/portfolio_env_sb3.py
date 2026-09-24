@@ -7,7 +7,7 @@ points needed by Stable-Baselines3:
 - Gymnasium reset()/step() signatures
 - Paper-style two-view observation shape: 20 x (5 price + 20 indicators)
 - 5-asset action: BTC, ETH, LTC, BNB, USDT
-- Portfolio rebalancing at every 2-hour step
+- Portfolio rebalancing at every configured bar
 - Optional DSR reward
 - No transaction fee, matching the paper's current environment
 """
@@ -26,9 +26,9 @@ from src.feature_schema import INDICATOR_DIM, PORTFOLIO_ASSETS, PRICE_DIM
 
 
 class CryptoPortfolioEnv(gym.Env):
-    """Gymnasium market simulator shared by the A2C and MFN-A2C experiments.
+    """Gymnasium market simulator shared by the A2C experiments.
 
-    Each step is one two-hour bar. In simplex mode the action is already a
+    Each step is one market bar. In simplex mode the action is already a
     non-negative, unit-sum weight vector. Legacy logits mode remains
     available for experiments that have not yet migrated.
     """
@@ -88,7 +88,11 @@ class CryptoPortfolioEnv(gym.Env):
             dtype=np.float64
         )
 
+<<<<<<< Updated upstream
         # Thesis schema: five price relatives and four indicators per asset.
+=======
+        # Scheme-A schema: five price relatives and four paper indicators plus RS_14D per asset.
+>>>>>>> Stashed changes
         self.price_dim = self.pct_data.shape[1]
         self.indicator_dim = self.ta_data.shape[1]
         total_features = self.price_dim + self.indicator_dim
@@ -154,7 +158,7 @@ class CryptoPortfolioEnv(gym.Env):
         )
 
     def _get_obs(self, idx: int) -> np.ndarray:
-        """Return the historical window while preserving MFN feature order."""
+        """Return the historical window while preserving feature order."""
         end = idx + self.n_previous_timesteps
         price_window = self.pct_data.iloc[idx:end].to_numpy(dtype=np.float32)
         ta_window = self.ta_data.iloc[idx:end].to_numpy(dtype=np.float32)

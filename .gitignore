@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 tensorboard/
 checkpoints/
+logs/
 data/
 *.zip
 mfn_a2c_test*
@@ -11,6 +12,7 @@ backtest_results.csv
 formal_backtest_results.csv
 formal_metrics.csv
 mfn_vs_buyhold.csv
+<<<<<<< Updated upstream
 *.png
 
 # Track only the retrained formal models; keep old/experimental ZIP files ignored.
@@ -19,3 +21,9 @@ models/*
 !models/mfn_a2c_formal.zip
 !models/a2c_baseline.zip
 !models/dqn_baseline.zip
+=======
+*.png
+
+# 所有模型 ZIP 一律忽略；不再例外追蹤任何正式模型 ZIP。
+_archive_2h_pending_delete_*/
+>>>>>>> Stashed changes

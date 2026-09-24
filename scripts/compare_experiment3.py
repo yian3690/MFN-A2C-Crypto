@@ -1,369 +1,63 @@
-"""Create the Experiment 3 reward-function comparison table and figure."""
+"""繪製4H Experiment 3：A2C的DSR與絕對Portfolio Value reward消融。"""
 
 from pathlib import Path
 import sys
 
-import pandas as pd
 import matplotlib.pyplot as plt
-
-
-# ============================================================
-# Paths
-# ============================================================
+import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+import config_4h as cfg
 
-from src.evaluation_metrics import validate_saved_result_period
-
-RESULTS = ROOT / "results"
-FIGURES = ROOT / "figures"
-
-FIGURES.mkdir(
-    parents=True,
-    exist_ok=True,
-)
-
-INITIAL_BALANCE = 10000.0
+METHODS = {
+    "A2C + DSR": cfg.RESULT_NAMES["a2c"],
+    "A2C + PV": cfg.A2C_PV_RESULT_NAME,
+}
 
 
-# ============================================================
-# Load curve
-# ============================================================
-
-def load_curve(filename):
-
-    """Load and normalize one Experiment 3 portfolio-value result file."""
-    path = (
-        RESULTS /
-        filename
-    )
-
+def _load(name: str, filename: str) -> pd.DataFrame:
+    path = cfg.RESULTS / filename
     if not path.exists():
-
-        raise FileNotFoundError(
-            f"Missing result file: {path}"
-        )
-
-    df = pd.read_csv(path)
-    validate_saved_result_period(df)
-
-    if (
-        "portfolio_value"
-        not in df.columns
-    ):
-
-        raise ValueError(
-            f"{filename} has no "
-            f"'portfolio_value' column"
-        )
-
-    values = (
-        df[
-            "portfolio_value"
-        ]
-        .astype(float)
-        .reset_index(drop=True)
-    )
-
-    # Normalize all curves
-    # to initial balance = 10000
-
-    values = (
-        values
-        /
-        values.iloc[0]
-        *
-        INITIAL_BALANCE
-    )
-
-    return values
-
-
-# ============================================================
-# Main
-# ============================================================
-
-def main():
-
-    """主程式入口：依序執行此腳本定義的完整流程。"""
-    curves = {
-
-        "MFN-A2C + DSR":
-            load_curve(
-                "exp3_mfn_dsr_results.csv"
-            ),
-
-        "MFN-A2C + PV":
-            load_curve(
-                "exp3_mfn_pv_results.csv"
-            ),
-
-        "A2C + DSR":
-            load_curve(
-                "exp3_a2c_dsr_results.csv"
-            ),
-
-        "A2C + PV":
-            load_curve(
-                "exp3_a2c_pv_results.csv"
-            ),
-    }
-
-    # --------------------------------------------------------
-    # Align curve lengths
-    # --------------------------------------------------------
-
-    n = min(
-        len(v)
-        for v in curves.values()
-    )
-
-    for key in curves:
-
-        curves[key] = (
-            curves[key]
-            .iloc[:n]
-            .reset_index(drop=True)
-        )
-
-    # --------------------------------------------------------
-    # DataFrame
-    # --------------------------------------------------------
-
-    comparison = (
-        pd.DataFrame({
-
-            "timestep":
-                range(n),
-
-            **{
-                method:
-                    values.values
-
-                for (
-                    method,
-                    values
-                ) in curves.items()
-            }
-        })
-    )
-
-    output_csv = (
-        RESULTS /
-        "experiment3_comparison.csv"
-    )
-
-    comparison.to_csv(
-        output_csv,
-        index=False,
-    )
-
-    # --------------------------------------------------------
-    # Reference baseline
-    # --------------------------------------------------------
-
-    baseline_final = (
-        comparison[
-            "A2C + PV"
-        ].iloc[-1]
-    )
-
-    # --------------------------------------------------------
-    # Print Table-IV-like results
-    # --------------------------------------------------------
-
-    print()
-    print("=" * 85)
-
-    print(
-        "EXPERIMENT 3 RESULTS"
-    )
-
-    print("=" * 85)
-
-    print(
-        f"{'Method':<20}"
-        f"{'Peak PV':>15}"
-        f"{'Peak Improve':>15}"
-        f"{'Final PV':>15}"
-        f"{'Final Improve':>15}"
-    )
-
-    print("-" * 85)
-
-    table_rows = []
-
-    for method in [
-
-        "MFN-A2C + DSR",
-        "MFN-A2C + PV",
-        "A2C + DSR",
-        "A2C + PV",
-
-    ]:
-
-        values = (
-            comparison[
-                method
-            ]
-        )
-
-        peak = values.max()
-
-        final = (
-            values.iloc[-1]
-        )
-
-        # Paper defines Improve
-        # relative to A2C + PV
-
-        peak_improve = (
-            peak /
-            comparison[
-                "A2C + PV"
-            ].max()
-        )
-
-        final_improve = (
-            final /
-            baseline_final
-        )
-
-        print(
-
-            f"{method:<20}"
-
-            f"{peak:>15.2f}"
-
-            f"{peak_improve:>15.3f}"
-
-            f"{final:>15.2f}"
-
-            f"{final_improve:>15.3f}"
-        )
-
-        table_rows.append({
-
-            "Method":
-                method,
-
-            "Peak PV":
-                peak,
-
-            "Peak Improve":
-                peak_improve,
-
-            "Final PV":
-                final,
-
-            "Final Improve":
-                final_improve,
-        })
-
-    print("=" * 85)
-
-    # --------------------------------------------------------
-    # Save result table
-    # --------------------------------------------------------
-
-    table_df = (
-        pd.DataFrame(
-            table_rows
-        )
-    )
-
-    table_output = (
-        RESULTS /
-        "experiment3_table.csv"
-    )
-
-    table_df.to_csv(
-        table_output,
-        index=False,
-    )
-
-    # --------------------------------------------------------
-    # Plot
-    # --------------------------------------------------------
-
-    plt.figure(
-        figsize=(12, 6)
-    )
-
-    for method in [
-
-        "MFN-A2C + DSR",
-        "MFN-A2C + PV",
-        "A2C + DSR",
-        "A2C + PV",
-
-    ]:
-
-        plt.plot(
-
-            comparison[
-                method
-            ],
-
-            label=method,
-
-            linewidth=2,
-        )
-
-    plt.xlabel(
-        "2-hour timestep"
-    )
-
-    plt.ylabel(
-        "Portfolio Value"
-    )
-
-    plt.title(
-        "Results of Experiment 3"
-    )
-
-    plt.legend()
-
-    plt.grid(
-        True,
-        alpha=0.3,
-    )
-
-    plt.tight_layout()
-
-    figure_output = (
-        FIGURES /
-        "experiment3_comparison.png"
-    )
-
-    plt.savefig(
-        figure_output,
-        dpi=300,
-        bbox_inches="tight",
-    )
-
-    plt.show()
-
-    # --------------------------------------------------------
-    # Finished
-    # --------------------------------------------------------
-
-    print()
-    print(
-        f"Comparison CSV : "
-        f"{output_csv}"
-    )
-
-    print(
-        f"Result Table   : "
-        f"{table_output}"
-    )
-
-    print(
-        f"Figure         : "
-        f"{figure_output}"
-    )
+        raise FileNotFoundError(f"{name}缺少4H結果：{path}")
+    frame = pd.read_csv(path)
+    frame["timestamp"] = pd.to_datetime(frame["timestamp"], utc=True)
+    return frame
+
+
+def main() -> None:
+    cfg.RESULTS.mkdir(parents=True, exist_ok=True)
+    cfg.FIGURES.mkdir(parents=True, exist_ok=True)
+    curves = {name: _load(name, filename) for name, filename in METHODS.items()}
+    common = min(len(frame) for frame in curves.values())
+    comparison = pd.DataFrame({
+        "timestamp": next(iter(curves.values()))["timestamp"].iloc[:common].values,
+        **{name: frame["portfolio_value"].iloc[:common].astype(float).values
+           for name, frame in curves.items()},
+    })
+    output_csv = cfg.RESULTS / f"experiment3_4h_{cfg.STEP_TAG}_comparison.csv"
+    comparison.to_csv(output_csv, index=False)
+
+    baseline = float(comparison["A2C + PV"].iloc[-1])
+    rows = []
+    for name in METHODS:
+        values = comparison[name]
+        rows.append({"Method": name, "Peak PV": values.max(),
+                     "Peak Improve": values.max() / comparison["A2C + PV"].max(),
+                     "Final PV": values.iloc[-1],
+                     "Final Improve": values.iloc[-1] / baseline})
+    table = pd.DataFrame(rows)
+    table.to_csv(cfg.RESULTS / f"experiment3_4h_{cfg.STEP_TAG}_table.csv", index=False)
+
+    fig, ax = plt.subplots(figsize=(12, 6))
+    for name in METHODS:
+        ax.plot(comparison["timestamp"], comparison[name], label=name, linewidth=1.8)
+    ax.set_title("Experiment 3 (4H): Effect of Reward Selection")
+    ax.set_xlabel("Date (4-hour bars)"); ax.set_ylabel("Portfolio Value")
+    ax.grid(alpha=0.25); ax.legend(); fig.tight_layout()
+    output_figure = cfg.FIGURES / f"experiment3_4h_{cfg.STEP_TAG}_comparison.png"
+    fig.savefig(output_figure, dpi=300, bbox_inches="tight"); plt.close(fig)
+    print(table.to_string(index=False)); print(f"Saved: {output_csv}"); print(f"Saved: {output_figure}")
 
 
 if __name__ == "__main__":

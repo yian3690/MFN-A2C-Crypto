@@ -17,7 +17,7 @@ class PriceOnlyWrapper(gym.ObservationWrapper):
 
     Paper Experiment 1:
         A2C w/o TI uses only price-change information.
-        MFN is not used because there is only one modality.
+        The technical-indicator branch is not used because this baseline is price-only.
     """
 
     def __init__(self, env, price_dim=PRICE_DIM):

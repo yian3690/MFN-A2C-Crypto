@@ -1,9 +1,17 @@
-# 程式碼用途導覽
+# 4H程式指南
 
+<<<<<<< Updated upstream
 本專案重現論文的 MFN-A2C 加密貨幣投資組合流程。每個決策點使用前 20 個 2 小時 K 線（40 小時）作為觀察值，將資金配置到 BTC、ETH、LTC、BNB 與 USDT。USDT 視為報酬率 0 的穩定資產。
+=======
+## 設定與資料
+>>>>>>> Stashed changes
 
-## 核心模組
+- `scripts/config_4h.py`：4H資料期間、Train/Test、reward、模型名稱及輸出路徑。
+- `scripts/download_data_4h.py`：下載Binance 4H K線。
+- `scripts/prepare_features_4h.py`：產生Train-only z-score特徵與最後1,080根Test。
+- `src/portfolio_env_sb3.py`：共用投資組合環境；動作作用於下一期報酬。
 
+<<<<<<< Updated upstream
 - `src/dsr.py`：全專案唯一的 EWMA DSR 實作；正式重現預設採封存程式的`paper_legacy`定義，`delta_A=A_new-A_old`、`delta_B=B_new-B_old`、`eta=0.005`；canonical innovation保留供消融，前5 steps更新統計量但回傳0。
 - `src/training_diagnostics.py`：每個rollout記錄reward/DSR尺度、PV、return、turnover、配置entropy/集中度、Dirichlet concentration、deterministic權重變化、MFN參數/梯度、Actor/Critic loss與explained variance；MFN evaluate會自動讀取最新CSV並提示可能原因。
 - `src/evaluation_metrics.py`：加入逐步 DSR、累積 DSR、配置比例與 turnover；表格名稱使用 Peak/Final Cumulative DSR。
@@ -15,19 +23,35 @@
 - `src/feature_scaling.py`：逐欄 z-score 標準化；只允許使用 Train 統計量，避免 Test 洩漏。
 - `src/price_only_env.py`：實驗 1 的 A2C w/o TI，只保留價格變化特徵。
 - `src/discrete_action_env.py`：DQN 專用包裝；使用 20% 權重網格，BTC/ETH/LTC/BNB 單一資產最高 60%，USDT 可達 100%，共 106 個動作。
+=======
+## 訓練與評估
+>>>>>>> Stashed changes
 
-## 資料流程
+- `scripts/train_common.py`：A2C、A2C without TI與DMAN Temporal Attention共用訓練及跨步數續訓。
+- `scripts/evaluate_common.py`：上述三種A2C方法共用回測、資產歸因與診斷。
+- `scripts/train_dman_temporal_attention_a2c.py`／`evaluate_dman_temporal_attention_a2c.py`：目前的雙LSTM＋DMAN＋Temporal Self-Attention架構。
+- `scripts/train_dqn.py`／`evaluate_dqn.py`：Experiment 2的4H DQN。
+- `scripts/experiment3_common.py`：Experiment 3的一般A2C absolute PV reward流程。
 
+<<<<<<< Updated upstream
 1. `download_binance_paper.py`：下載四種加密貨幣自 2018-01-01 至 2025-09-01 00:00（含）的 Binance 2 小時 K 線，共33,550筆原始資料並依時間戳合併。
 2. `prepare_paper_features.py`：依式4.2建立 BTC、ETH、LTC、BNB、USDT 共5個Close price-relative特徵，並建立5資產×4指標共20個SMA/EMA/MACD/RSI特徵。MACD依封存原碼採`MACD_12_26_9`（DIF/MACD line）；USDT為中性常數，標準化後為0。保留最新33,524筆有效資料；前32,444筆為Train、最後1,080筆為Test。標準化只用Train擬合，Test套用同一組統計量。
 3. `check_alignment.py`：驗證 train/test 的時間戳、原始價格及兩類特徵逐列對齊。
 4. `src/experiment_periods.py`：集中定義2H間隔、Train/Test日期、20步lookback與預期筆數；本版本沒有Validation。
+=======
+## 比較圖
+>>>>>>> Stashed changes
 
-## 正確的決策時間軸
+- `scripts/compare_experiment1.py`：三種A2C架構與Buy-and-Hold表格。
+- `scripts/compare_experiment2.py`：Temporal Attention、A2C、DQN、Buy-and-Hold曲線與表格。
+- `scripts/compare_experiment3.py`：一般A2C的DSR/return與PV reward曲線及表格。
 
-環境不可以讓模型看到尚未完成的 K 線。每一步的順序如下：
+## 目錄規則
+
+後續不再建立`experiment1_4h`子目錄：
 
 ```text
+<<<<<<< Updated upstream
 觀測資料：第 t-20 到第 t-1 根已完成 K 線
 執行動作：在 Open[t] 配置 BTC、ETH、LTC、BNB、USDT 權重
 計算報酬：使用 Open[t] 到 Open[t+1] 的價格變化
@@ -131,3 +155,12 @@ python scripts\evaluate_dqn_baseline.py
 | Sharpe Ratio | 1.8268 |
 
 這是舊資料頻率與切分下的流程驗證結果，不能與目前2小時流程直接比較。正式比較應固定Train/Test、訓練步數、測試期間與seed，至少執行5個seeds並報告平均值與標準差。
+=======
+data/        4H資料
+models/      4H最終模型
+results/     4H逐步結果與metrics
+logs/        TensorBoard與訓練診斷
+checkpoints/ 續訓checkpoint
+figures/     Experiment比較圖
+```
+>>>>>>> Stashed changes

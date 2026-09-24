@@ -143,11 +143,21 @@ class TrainingDiagnosticsCallback(BaseCallback):
                 gradient_max = max(gradient_max, float(gradient.abs().max().cpu()))
                 gradient_elements += gradient.numel()
                 near_zero_gradients += int((gradient.abs() < 1e-12).sum().cpu())
+<<<<<<< Updated upstream
+=======
+        if parameter_elements == 0:
+            return {
+                "extractor_parameter_norm": np.nan,
+                "extractor_gradient_norm": np.nan,
+                "extractor_gradient_abs_max": np.nan,
+                "extractor_near_zero_gradient_fraction": np.nan,
+            }
+>>>>>>> Stashed changes
         return {
-            "mfn_parameter_norm": parameter_sq**0.5,
-            "mfn_gradient_norm": gradient_sq**0.5,
-            "mfn_gradient_abs_max": gradient_max,
-            "mfn_near_zero_gradient_fraction": (
+            "extractor_parameter_norm": parameter_sq**0.5,
+            "extractor_gradient_norm": gradient_sq**0.5,
+            "extractor_gradient_abs_max": gradient_max,
+            "extractor_near_zero_gradient_fraction": (
                 near_zero_gradients / gradient_elements if gradient_elements else np.nan
             ),
         }
@@ -202,19 +212,26 @@ def diagnose_training_file(path: str | Path) -> tuple[dict[str, float], list[str
             return float("nan")
         return float(pd.to_numeric(tail[column], errors="coerce").median())
 
-    summary = {
-        "rollouts": float(len(frame)),
+    extractor_gradient = median("extractor_gradient_norm")
+    if not np.isfinite(extractor_gradient) and "mfn_a2c_" in Path(path).name.lower():
+        # Backward compatibility for historical diagnostics created by the removed MFN path.
+        extractor_gradient = median("mfn_gradient_norm")
+
+    summary = {        "rollouts": float(len(frame)),
         "final_timesteps": float(frame["timesteps"].iloc[-1]),
         "reward_std_recent": median("reward_std"),
         "reward_abs_p99_recent": median("reward_abs_p99"),
         "explained_variance_recent": median("explained_variance"),
-        "mfn_gradient_norm_recent": median("mfn_gradient_norm"),
+        "extractor_gradient_norm_recent": extractor_gradient,
         "allocation_entropy_recent": median("allocation_entropy_mean"),
         "equal_weight_distance_recent": median("policy_equal_weight_l1_mean"),
         "policy_weight_variation_recent": median("policy_weight_temporal_std_mean"),
         "turnover_recent": median("turnover_mean"),
     }
+<<<<<<< Updated upstream
 
+=======
+>>>>>>> Stashed changes
     warnings: list[str] = []
     if np.isfinite(summary["reward_std_recent"]) and summary["reward_std_recent"] < 1e-4:
         warnings.append("DSR reward variation is extremely small; the policy signal may be too weak.")
@@ -222,8 +239,8 @@ def diagnose_training_file(path: str | Path) -> tuple[dict[str, float], list[str
         warnings.append("DSR reward has large spikes; early EWMA variance or reward instability may dominate learning.")
     if np.isfinite(summary["explained_variance_recent"]) and summary["explained_variance_recent"] < 0:
         warnings.append("Critic explained variance is negative; value learning is worse than a constant predictor.")
-    if np.isfinite(summary["mfn_gradient_norm_recent"]) and summary["mfn_gradient_norm_recent"] < 1e-8:
-        warnings.append("MFN gradients are nearly zero; credit is not reaching the feature extractor.")
+    if np.isfinite(summary["extractor_gradient_norm_recent"]) and summary["extractor_gradient_norm_recent"] < 1e-8:
+        warnings.append("Feature-extractor gradients are nearly zero; credit is not reaching the encoder.")
     entropy = summary["allocation_entropy_recent"]
     equal_distance = summary["equal_weight_distance_recent"]
     variation = summary["policy_weight_variation_recent"]
@@ -245,3 +262,42 @@ def latest_diagnostics(directory: str | Path, pattern: str) -> Path | None:
     candidates = list(Path(directory).glob(pattern))
     return max(candidates, key=lambda item: item.stat().st_mtime) if candidates else None
 
+<<<<<<< Updated upstream
+=======
+
+def print_training_diagnostics_summary(
+    path: str | Path,
+    summary: dict[str, float],
+    warnings: list[str],
+) -> None:
+    """將最重要的探索、Critic與reward衝突診斷輸出到終端機。"""
+    print("TRAINING DIAGNOSTICS")
+    print(f"Source CSV                    : {path}")
+    print(f"Recorded diagnostic rows      : {int(summary['rollouts'])}")
+    fields = (
+        ("Recent reward std", "reward_std_recent", ".6g"),
+        ("Recent |reward| p99", "reward_abs_p99_recent", ".6g"),
+        ("Recent explained variance", "explained_variance_recent", ".4f"),
+        ("Value/return correlation", "value_return_correlation_recent", ".4f"),
+        ("Gaussian std", "gaussian_std_recent", ".4f"),
+        (
+            "Sampled/deterministic gap",
+            "sampled_deterministic_gap_recent",
+            ".2%",
+        ),
+        ("Reward sign conflict", "reward_sign_conflict_recent", ".2%"),
+        ("Recent allocation entropy", "allocation_entropy_recent", ".4f"),
+        ("Recent deterministic variation", "policy_weight_variation_recent", ".4f"),
+        ("Recent sampled turnover", "turnover_recent", ".2%"),
+    )
+    for label, key, number_format in fields:
+        value = summary.get(key, np.nan)
+        text = format(value, number_format) if np.isfinite(value) else "n/a"
+        print(f"{label:<30}: {text}")
+    gradient = summary.get("extractor_gradient_norm_recent", np.nan)
+    if np.isfinite(gradient):
+        print(f"{'Recent extractor gradient norm':<30}: {gradient:.6g}")
+    print("Possible causes:")
+    for warning in warnings:
+        print(f"- {warning}")
+>>>>>>> Stashed changes
