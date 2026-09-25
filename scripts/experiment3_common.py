@@ -89,7 +89,7 @@ def train(method: str) -> None:
 
 def evaluate(method: str) -> None:
     model_name, result_name = _names(method)
-    cfg.RESULTS.mkdir(parents=True, exist_ok=True)
+    cfg.MODEL_RESULTS.mkdir(parents=True, exist_ok=True)
     raw = pd.read_csv(cfg.DATA / "merged_output_test.csv")
     env = cfg.make_portfolio_env("test", reward_type="pv")
     model = A2C.load(str(cfg.MODELS / model_name), env=env, device="cpu")
@@ -103,7 +103,7 @@ def evaluate(method: str) -> None:
                              warmup_steps=env.dsr_warmup_steps,
                              formula=env.dsr_formula)
     result = add_strength_alignment_columns(result, horizons=(3, 6, 18, 42))
-    result.to_csv(cfg.RESULTS / result_name, index=False)
+    result.to_csv(cfg.MODEL_RESULTS / result_name, index=False)
     values = pd.to_numeric(result["portfolio_value"]); returns = values.pct_change().dropna()
     metrics = {
         "Method": f"{method}_pv", "Initial PV": float(values.iloc[0]),
@@ -118,7 +118,7 @@ def evaluate(method: str) -> None:
     metrics.update(summarize_dsr(result)); metrics.update(allocation)
     metrics.update(contribution); metrics.update(strength)
     pd.DataFrame([metrics]).to_csv(
-        cfg.RESULTS / result_name.replace("_results.csv", "_metrics.csv"), index=False)
+        cfg.MODEL_RESULTS / result_name.replace("_results.csv", "_metrics.csv"), index=False)
     print("=" * 72); print(f"4H EXPERIMENT 3 - {method.upper()} + PV BACKTEST"); print("=" * 72)
     print(f"Final PV     : {metrics['Final PV']:.2f}")
     print(f"Total Return : {metrics['Total Return']:.2%}")

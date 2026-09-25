@@ -1007,3 +1007,21 @@ Turnover、explained variance、value-return correlation、Gaussian std與sample
 - 舊Experiment 3入口仍匯入已移除的`mfn_sb3_extractor`；舊A2C baseline也仍標示2H與固定18 epochs，因此不可再作為目前4H正式入口。
 - 保留`check_alignment.py`，因其仍可驗證目前Train/Test的timestamp、raw price、price feature與technical feature逐列對齊，不屬於舊模型流程。
 - README與CODE_GUIDE改為只列現行4H入口；`evaluation_metrics.py`的資料準備提示同步改為`prepare_features_4h.py`。
+## 65. 2026-09-24：拆分模型評估結果與實驗彙整結果
+
+- `results/model_result/`統一存放各模型的逐步`*_results.csv`與摘要`*_metrics.csv`；現有37份模型評估CSV已移入此目錄。
+- `results/experiment_result/`統一存放Experiment 1至3的comparison與table CSV；現有Experiment 1比較表已移入並重新產生驗證。
+- `config_4h.py`新增`MODEL_RESULTS`與`EXPERIMENT_RESULTS`共用路徑；所有evaluate程式改寫入`model_result`，所有compare程式改從`model_result`讀取並寫入`experiment_result`。
+- 驗證：results根目錄不再直接存放CSV、Python compileall通過、40項unittest全數通過；Experiment 1比較程式成功讀取目前600k結果並輸出`results/experiment_result/experiment1_600k_comparison.csv`。
+## 66. 2026-09-24：新增Experiment 1 PV與累積DSR雙圖
+
+- 擴充`compare_experiment1.py`，由目前config指定的DMAN Temporal Attention、A2C、A2C without TI與Buy-and-Hold逐步結果繪製左右雙圖。
+- 左圖為Portfolio Value，右圖為Cumulative Differential Sharpe Ratio，橫軸均為4H iteration；圖片輸出至`figures/experiment1/experiment1_4h_<steps>_pv_dsr.png`。
+- 舊Buy-and-Hold逐步CSV沒有return與DSR欄位時，繪圖程式會從Portfolio Value計算報酬，再使用與模型評估相同的eta與paper DSR公式補算，避免曲線定義不一致。
+- 驗證：目前四組600k結果時間戳與長度一致，皆為1,060點；比較CSV及4002×1628、300 DPI PNG均成功生成。
+## 67. 2026-09-24：Experiment 1圖表改用學長版DSR並拆成兩張圖
+
+- 正式訓練與evaluate仍維持EWMA raw step DSR；只有`compare_experiment1.py`的論文圖表，從各方法的實際portfolio return重新計算`LEGACY_EXPANDING_FORMULA`，即expanding moments與`eta × Dt`。
+- Portfolio Value與DSR改為兩張獨立300 DPI圖片；DSR圖的Y軸名稱依論文維持`Differential Sharpe Ratio`，但內部曲線仍是逐期legacy DSR的累積值。
+- 新輸出為`experiment1_4h_<steps>_portfolio_value.png`與`experiment1_4h_<steps>_differential_sharpe_ratio.png`；移除舊合併圖避免誤用。
+- 目前600k圖表的legacy Peak/Final DSR：Proposed 0.2132/0.1527、A2C 0.2941/0.2159、A2C w/o ti 0.3094/0.2239、Buy-and-Hold 0.3035/0.2298。

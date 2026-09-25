@@ -44,6 +44,10 @@ class ExperimentConfigTests(unittest.TestCase):
         self.assertEqual(cfg.DATA, cfg.ROOT / "data")
         self.assertEqual(cfg.MODELS, cfg.ROOT / "models")
         self.assertEqual(cfg.RESULTS, cfg.ROOT / "results")
+        self.assertEqual(cfg.MODEL_RESULTS, cfg.RESULTS / "model_result")
+        self.assertEqual(
+            cfg.EXPERIMENT_RESULTS, cfg.RESULTS / "experiment_result"
+        )
         self.assertNotIn("experiment1_4h", str(cfg.DATA))
 
     def test_data_paths_only_accept_train_and_test(self):

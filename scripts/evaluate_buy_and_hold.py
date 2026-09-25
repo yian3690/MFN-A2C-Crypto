@@ -16,7 +16,7 @@ import config_4h as cfg
 
 
 def main() -> None:
-    cfg.RESULTS.mkdir(parents=True, exist_ok=True)
+    cfg.MODEL_RESULTS.mkdir(parents=True, exist_ok=True)
     raw = pd.read_csv(cfg.DATA / "merged_output_test.csv")
     raw["Open Time"] = pd.to_datetime(raw["Open Time"], utc=True)
     if len(raw) != cfg.TEST_ROWS:
@@ -34,7 +34,7 @@ def main() -> None:
     for index, asset in enumerate(cfg.CRYPTO_ASSETS):
         result[f"value_{asset.lower()}"] = crypto_values[:, index]
     result["value_usdt"] = initial_per_asset
-    result.to_csv(cfg.RESULTS / "buy_and_hold_4h_results.csv", index=False)
+    result.to_csv(cfg.MODEL_RESULTS / "buy_and_hold_4h_results.csv", index=False)
 
     values = result["portfolio_value"]
     returns = values.pct_change().dropna()
@@ -47,7 +47,7 @@ def main() -> None:
         "Max Drawdown": float((values / values.cummax() - 1.0).min()),
         "Sharpe Ratio": float(returns.mean() / returns.std() * np.sqrt(cfg.PERIODS_PER_YEAR)) if returns.std() > 0 else 0.0,
     }
-    pd.DataFrame([metrics]).to_csv(cfg.RESULTS / "buy_and_hold_4h_metrics.csv", index=False)
+    pd.DataFrame([metrics]).to_csv(cfg.MODEL_RESULTS / "buy_and_hold_4h_metrics.csv", index=False)
     print("=" * 72)
     print("4H EXPERIMENT 1 - STATIC 20% BUY-AND-HOLD")
     print("=" * 72)

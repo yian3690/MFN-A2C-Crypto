@@ -28,7 +28,8 @@
 ```text
 data/        4H資料
 models/      4H最終模型
-results/     4H逐步結果與metrics
+results/model_result/       各模型4H逐步結果與metrics
+results/experiment_result/  Experiment彙整CSV
 logs/        TensorBoard與訓練診斷
 checkpoints/ 續訓checkpoint
 figures/     Experiment比較圖

@@ -85,7 +85,7 @@ def print_strength(metrics: dict[str, float]) -> None:
 def evaluate(method: str) -> None:
     if method not in cfg.MODEL_NAMES:
         raise ValueError(f"未知方法：{method}")
-    cfg.RESULTS.mkdir(parents=True, exist_ok=True)
+    cfg.MODEL_RESULTS.mkdir(parents=True, exist_ok=True)
     raw = pd.read_csv(cfg.DATA / "merged_output_test.csv")
     raw["Open Time"] = pd.to_datetime(raw["Open Time"], utc=True)
     env, base_env = build_env(method)
@@ -106,7 +106,7 @@ def evaluate(method: str) -> None:
         formula=base_env.dsr_formula,
     )
     result = add_strength_alignment_columns(result, horizons=HORIZONS)
-    result.to_csv(cfg.RESULTS / cfg.RESULT_NAMES[method], index=False)
+    result.to_csv(cfg.MODEL_RESULTS / cfg.RESULT_NAMES[method], index=False)
 
     values = pd.to_numeric(result["portfolio_value"])
     returns = values.pct_change().dropna()
@@ -130,7 +130,7 @@ def evaluate(method: str) -> None:
     metrics.update(allocation)
     metrics.update(contribution)
     metrics.update(strength)
-    metrics_path = cfg.RESULTS / f"{cfg.MODEL_NAMES[method]}_metrics.csv"
+    metrics_path = cfg.MODEL_RESULTS / f"{cfg.MODEL_NAMES[method]}_metrics.csv"
     pd.DataFrame([metrics]).to_csv(metrics_path, index=False)
 
     print("=" * 72)

@@ -42,6 +42,12 @@ python scripts\evaluate_buy_and_hold.py
 python scripts\compare_experiment1.py
 ```
 
+輸出：
+
+- `results/experiment_result/experiment1_<steps>_comparison.csv`
+- `figures/experiment1/experiment1_4h_<steps>_portfolio_value.png`
+- `figures/experiment1/experiment1_4h_<steps>_differential_sharpe_ratio.png`
+
 三種A2C方法皆可使用`--resume`，例如：
 
 ```powershell
@@ -61,8 +67,8 @@ python scripts\compare_experiment2.py
 
 繪圖腳本會讀取同一`TOTAL_TIMESTEPS`標籤下的Temporal Attention、A2C與DQN結果，輸出：
 
-- `results/experiment2_4h_<steps>_comparison.csv`
-- `results/experiment2_4h_<steps>_table.csv`
+- `results/experiment_result/experiment2_4h_<steps>_comparison.csv`
+- `results/experiment_result/experiment2_4h_<steps>_table.csv`
 - `figures/experiment2_4h_<steps>_comparison.png`
 
 ## Experiment 3：Reward選擇
@@ -80,8 +86,8 @@ python scripts\compare_experiment3.py
 
 PV版本也支援`--resume`。繪圖輸出：
 
-- `results/experiment3_4h_<steps>_comparison.csv`
-- `results/experiment3_4h_<steps>_table.csv`
+- `results/experiment_result/experiment3_4h_<steps>_comparison.csv`
+- `results/experiment_result/experiment3_4h_<steps>_table.csv`
 - `figures/experiment3_4h_<steps>_comparison.png`
 
 ## 主要架構

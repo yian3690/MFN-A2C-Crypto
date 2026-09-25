@@ -17,7 +17,7 @@ METHODS = {
 
 
 def _load(name: str, filename: str) -> pd.DataFrame:
-    path = cfg.RESULTS / filename
+    path = cfg.MODEL_RESULTS / filename
     if not path.exists():
         raise FileNotFoundError(f"{name}缺少4H結果：{path}")
     frame = pd.read_csv(path)
@@ -26,7 +26,7 @@ def _load(name: str, filename: str) -> pd.DataFrame:
 
 
 def main() -> None:
-    cfg.RESULTS.mkdir(parents=True, exist_ok=True)
+    cfg.EXPERIMENT_RESULTS.mkdir(parents=True, exist_ok=True)
     cfg.FIGURES.mkdir(parents=True, exist_ok=True)
     curves = {name: _load(name, filename) for name, filename in METHODS.items()}
     common = min(len(frame) for frame in curves.values())
@@ -35,7 +35,7 @@ def main() -> None:
         **{name: frame["portfolio_value"].iloc[:common].astype(float).values
            for name, frame in curves.items()},
     })
-    output_csv = cfg.RESULTS / f"experiment3_4h_{cfg.STEP_TAG}_comparison.csv"
+    output_csv = cfg.EXPERIMENT_RESULTS / f"experiment3_4h_{cfg.STEP_TAG}_comparison.csv"
     comparison.to_csv(output_csv, index=False)
 
     baseline = float(comparison["A2C + PV"].iloc[-1])
@@ -47,7 +47,7 @@ def main() -> None:
                      "Final PV": values.iloc[-1],
                      "Final Improve": values.iloc[-1] / baseline})
     table = pd.DataFrame(rows)
-    table.to_csv(cfg.RESULTS / f"experiment3_4h_{cfg.STEP_TAG}_table.csv", index=False)
+    table.to_csv(cfg.EXPERIMENT_RESULTS / f"experiment3_4h_{cfg.STEP_TAG}_table.csv", index=False)
 
     fig, ax = plt.subplots(figsize=(12, 6))
     for name in METHODS:

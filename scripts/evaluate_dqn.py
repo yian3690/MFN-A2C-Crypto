@@ -22,7 +22,7 @@ from src.evaluation_metrics import (
 
 
 def main() -> None:
-    cfg.RESULTS.mkdir(parents=True, exist_ok=True)
+    cfg.MODEL_RESULTS.mkdir(parents=True, exist_ok=True)
     raw = pd.read_csv(cfg.DATA / "merged_output_test.csv")
     base_env = cfg.make_portfolio_env("test", action_mode=cfg.DQN_ACTION_MODE)
     env = DiscretePortfolioWrapper(
@@ -43,7 +43,7 @@ def main() -> None:
                              warmup_steps=base_env.dsr_warmup_steps,
                              formula=base_env.dsr_formula)
     result = add_strength_alignment_columns(result, horizons=(3, 6, 18, 42))
-    result.to_csv(cfg.RESULTS / cfg.DQN_RESULT_NAME, index=False)
+    result.to_csv(cfg.MODEL_RESULTS / cfg.DQN_RESULT_NAME, index=False)
     values = pd.to_numeric(result["portfolio_value"])
     returns = values.pct_change().dropna()
     metrics = {
@@ -60,7 +60,7 @@ def main() -> None:
     metrics.update(summarize_dsr(result)); metrics.update(allocation)
     metrics.update(contribution); metrics.update(strength)
     pd.DataFrame([metrics]).to_csv(
-        cfg.RESULTS / cfg.DQN_RESULT_NAME.replace("_results.csv", "_metrics.csv"),
+        cfg.MODEL_RESULTS / cfg.DQN_RESULT_NAME.replace("_results.csv", "_metrics.csv"),
         index=False,
     )
     print("=" * 72); print("4H EXPERIMENT 2 - DQN BACKTEST"); print("=" * 72)
