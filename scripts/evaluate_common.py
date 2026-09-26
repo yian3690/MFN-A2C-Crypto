@@ -103,7 +103,7 @@ def evaluate(method: str) -> None:
         result,
         eta=base_env.eta,
         warmup_steps=base_env.dsr_warmup_steps,
-        formula=base_env.dsr_formula,
+        formula=cfg.EVALUATION_DSR_FORMULA,
     )
     result = add_strength_alignment_columns(result, horizons=HORIZONS)
     result.to_csv(cfg.MODEL_RESULTS / cfg.RESULT_NAMES[method], index=False)
@@ -112,6 +112,8 @@ def evaluate(method: str) -> None:
     returns = values.pct_change().dropna()
     metrics = {
         "Method": method,
+        "DSR Formula": cfg.EVALUATION_DSR_FORMULA,
+        "DSR Eta": base_env.eta,
         "Initial PV": float(values.iloc[0]),
         "Final PV": float(values.iloc[-1]),
         "Total Return": float(values.iloc[-1] / values.iloc[0] - 1.0),

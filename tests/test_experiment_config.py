@@ -4,7 +4,9 @@ import sys
 import unittest
 from pathlib import Path
 
-from src.dsr import PAPER_FORMULA
+import numpy as np
+
+from src.dsr import EWMA_CHANGE_FORMULA, PAPER_FORMULA
 
 SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 sys.path.insert(0, str(SCRIPTS))
@@ -17,6 +19,7 @@ class ExperimentConfigTests(unittest.TestCase):
         self.assertGreater(cfg.TOTAL_TIMESTEPS, 0)
         self.assertIsInstance(cfg.SEED, int)
         self.assertEqual(cfg.DSR_FORMULA, PAPER_FORMULA)
+        self.assertEqual(cfg.EVALUATION_DSR_FORMULA, EWMA_CHANGE_FORMULA)
         self.assertGreater(cfg.DSR_REWARD_SCALE, 0.0)
         self.assertGreaterEqual(cfg.RETURN_REWARD_SCALE, 0.0)
         self.assertGreater(cfg.LOOKBACK, 0)
@@ -41,6 +44,10 @@ class ExperimentConfigTests(unittest.TestCase):
         self.assertEqual(cfg.number_tag(0.005), "0p005")
         self.assertEqual(cfg.number_tag(-2), "m2")
         self.assertEqual(cfg.DIAGNOSTICS_EVERY_ROLLOUTS, 5)
+        self.assertGreater(cfg.DQN_DIAGNOSTICS_FREQUENCY, 0)
+        self.assertIn(f"_{cfg.STEP_TAG}_", cfg.DQN_MODEL_NAME)
+        self.assertIn(f"_{cfg.STEP_TAG}_", cfg.A2C_RETURN_MODEL_NAME)
+        self.assertIn(f"_{cfg.STEP_TAG}_", cfg.PROPOSED_RETURN_MODEL_NAME)
         self.assertEqual(cfg.DATA, cfg.ROOT / "data")
         self.assertEqual(cfg.MODELS, cfg.ROOT / "models")
         self.assertEqual(cfg.RESULTS, cfg.ROOT / "results")
@@ -76,6 +83,24 @@ class ExperimentConfigTests(unittest.TestCase):
             )
         finally:
             train.close(); test.close()
+
+    def test_portfolio_return_reward_is_single_period_return(self):
+        env = cfg.make_portfolio_env(
+            "test", reward_type="portfolio_return"
+        )
+        try:
+            env.reset()
+            _, reward, _, _, info = env.step(
+                np.zeros(len(cfg.PORTFOLIO_ASSETS), dtype=np.float32)
+            )
+            self.assertAlmostEqual(reward, info["portfolio_return"])
+            self.assertAlmostEqual(
+                reward,
+                env.balance_history[-1] / env.balance_history[-2] - 1.0,
+            )
+            self.assertEqual(info["reward_type"], "portfolio_return")
+        finally:
+            env.close()
 
 
 if __name__ == "__main__":

@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from src.dsr import PAPER_FORMULA
+from src.dsr import EWMA_CHANGE_FORMULA, PAPER_FORMULA
 from src.portfolio_env_sb3 import CryptoPortfolioEnv
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -54,7 +54,10 @@ LEARNING_RATE = 7e-4
 GAMMA = 0.99
 INITIAL_BALANCE = 10_000.0
 DSR_ETA = 0.005
+# 訓練仍沿用目前模型所使用的innovation DSR，避免只為重畫圖而改變模型。
 DSR_FORMULA = PAPER_FORMULA
+# 正式評估依論文方法章：把EWMA moments的實際變化代入DSR。
+EVALUATION_DSR_FORMULA = EWMA_CHANGE_FORMULA
 DSR_REWARD_SCALE = 1.0
 RETURN_REWARD_SCALE = 0.0
 DSR_REWARD_MODE = "step"
@@ -72,16 +75,18 @@ ATTENTION_DEVICE = "cpu"
 
 # Experiment 2的DQN採離散simplex網格。
 DQN_ACTION_MODE = "simplex"
+DQN_LEARNING_RATE = 7e-4
 DQN_BUFFER_SIZE = 100_000
 DQN_LEARNING_STARTS = 10_000
 DQN_BATCH_SIZE = 64
 DQN_TRAIN_FREQUENCY = 4
 DQN_GRADIENT_STEPS = 1
 DQN_TARGET_UPDATE_INTERVAL = 10_000
-DQN_EXPLORATION_FRACTION = 0.1
+DQN_EXPLORATION_FRACTION = 0.3
 DQN_EXPLORATION_FINAL_EPS = 0.05
-DQN_WEIGHT_STEP = 0.2
-DQN_MAX_CRYPTO_WEIGHT = 0.60
+DQN_WEIGHT_STEP = 0.05
+DQN_MAX_CRYPTO_WEIGHT = 0.35
+DQN_DIAGNOSTICS_FREQUENCY = 10_000
 
 def number_tag(value: int | float) -> str:
     """把數值轉為安全檔名標籤，例如-2→m2、0.005→0p005。"""
@@ -111,10 +116,44 @@ MODEL_NAMES = {
 RESULT_NAMES = {
     key: f"{value}_results.csv" for key, value in MODEL_NAMES.items()
 }
-DQN_MODEL_NAME = f"dqn_baseline_{RUN_TAG}"
+def compact_int_tag(value: int) -> str:
+    """將DQN大數超參數縮短成檔名標籤。"""
+    if value >= 1000 and value % 1000 == 0:
+        return f"{value // 1000}k"
+    return str(value)
+
+
+# DQN不沿用A2C的Gaussian與advantage標籤；離散網格、replay與探索設定
+# 都會改變實驗身分，因此必須出現在模型與結果檔名中。
+DQN_RUN_TAG = (
+    f"{BAR_HOURS}h_noval_random{TRAIN_EPISODE_DAYS}d_{STEP_TAG}_"
+    f"{REWARD_TYPE}_paperdsr{number_tag(DSR_REWARD_SCALE)}_"
+    f"ret{number_tag(RETURN_REWARD_SCALE)}_"
+    f"eta{number_tag(DSR_ETA)}_win{LOOKBACK}_seed{SEED}_level_zscore_rs14d_"
+    f"ws{number_tag(DQN_WEIGHT_STEP)}_cap{number_tag(DQN_MAX_CRYPTO_WEIGHT)}_"
+    f"buf{compact_int_tag(DQN_BUFFER_SIZE)}_"
+    f"start{compact_int_tag(DQN_LEARNING_STARTS)}_b{DQN_BATCH_SIZE}_"
+    f"tf{DQN_TRAIN_FREQUENCY}_g{DQN_GRADIENT_STEPS}_"
+    f"tgt{compact_int_tag(DQN_TARGET_UPDATE_INTERVAL)}_"
+    f"ex{number_tag(DQN_EXPLORATION_FRACTION)}to"
+    f"{number_tag(DQN_EXPLORATION_FINAL_EPS)}_lr{number_tag(DQN_LEARNING_RATE)}"
+)
+DQN_MODEL_NAME = f"dqn_baseline_{DQN_RUN_TAG}"
 DQN_RESULT_NAME = f"{DQN_MODEL_NAME}_results.csv"
-A2C_PV_MODEL_NAME = f"a2c_pv_{RUN_TAG}"
-A2C_PV_RESULT_NAME = f"{A2C_PV_MODEL_NAME}_results.csv"
+PORTFOLIO_RETURN_RUN_TAG = (
+    f"{BAR_HOURS}h_noval_random{TRAIN_EPISODE_DAYS}d_{STEP_TAG}_"
+    f"reward_portfolio_return_win{LOOKBACK}_"
+    f"gaussian_logstd{number_tag(A2C_LOG_STD_INIT)}_"
+    f"{ADVANTAGE_TAG}_e{A2C_UPDATE_EPOCHS}_seed{SEED}_"
+    "level_zscore_rs14d"
+)
+A2C_RETURN_MODEL_NAME = f"a2c_return_{PORTFOLIO_RETURN_RUN_TAG}"
+A2C_RETURN_RESULT_NAME = f"{A2C_RETURN_MODEL_NAME}_results.csv"
+PROPOSED_RETURN_MODEL_NAME = (
+    "dman_temporal_attention_a2c_return_"
+    f"{PORTFOLIO_RETURN_RUN_TAG}_cpu_diag5"
+)
+PROPOSED_RETURN_RESULT_NAME = f"{PROPOSED_RETURN_MODEL_NAME}_results.csv"
 
 
 def data_paths(split: str) -> dict[str, Path]:
@@ -181,7 +220,7 @@ def a2c_algorithm_kwargs() -> dict:
 def dqn_algorithm_kwargs() -> dict:
     """回傳4H Experiment 2的DQN超參數。"""
     return {
-        "learning_rate": LEARNING_RATE,
+        "learning_rate": DQN_LEARNING_RATE,
         "gamma": GAMMA,
         "buffer_size": DQN_BUFFER_SIZE,
         "learning_starts": DQN_LEARNING_STARTS,

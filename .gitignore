@@ -1,4 +1,4 @@
-﻿.venv/
+.venv/
 __pycache__/
 *.pyc
 tensorboard/
@@ -12,18 +12,19 @@ backtest_results.csv
 formal_backtest_results.csv
 formal_metrics.csv
 mfn_vs_buyhold.csv
-<<<<<<< Updated upstream
-*.png
-
-# Track only the retrained formal models; keep old/experimental ZIP files ignored.
-!models/
-models/*
-!models/mfn_a2c_formal.zip
-!models/a2c_baseline.zip
-!models/dqn_baseline.zip
-=======
 *.png
 
 # 所有模型 ZIP 一律忽略；不再例外追蹤任何正式模型 ZIP。
 _archive_2h_pending_delete_*/
->>>>>>> Stashed changes
+
+# Cumulative DSR消融測試的所有執行產物均留在本機。
+scripts/cumulative_dsr_test/models/
+scripts/cumulative_dsr_test/logs/
+scripts/cumulative_dsr_test/checkpoints/
+scripts/cumulative_dsr_test/results/
+scripts/cumulative_dsr_test/figures/
+
+# 本機訓練與評估產物：不提交到GitHub。
+/models/
+/results/
+/figures/

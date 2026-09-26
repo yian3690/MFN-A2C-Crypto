@@ -13,6 +13,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import config_4h as cfg
+from src.evaluation_metrics import add_dsr_columns, summarize_dsr
 
 
 def main() -> None:
@@ -31,15 +32,24 @@ def main() -> None:
         "timestamp": trade["Open Time"],
         "portfolio_value": portfolio_values,
     })
+    # 四種方法一律由PV_t / PV_{t-1} - 1取得正式評估報酬。
+    result["return"] = result["portfolio_value"].pct_change()
     for index, asset in enumerate(cfg.CRYPTO_ASSETS):
         result[f"value_{asset.lower()}"] = crypto_values[:, index]
     result["value_usdt"] = initial_per_asset
-    result.to_csv(cfg.MODEL_RESULTS / "buy_and_hold_4h_results.csv", index=False)
+    result = add_dsr_columns(
+        result,
+        eta=cfg.DSR_ETA,
+        formula=cfg.EVALUATION_DSR_FORMULA,
+    )
+    result.to_csv(cfg.MODEL_RESULTS / "buy_and_hold_4h_results.csv", index=False, lineterminator="\n")
 
     values = result["portfolio_value"]
     returns = values.pct_change().dropna()
     metrics = {
         "Method": "buy_and_hold",
+        "DSR Formula": cfg.EVALUATION_DSR_FORMULA,
+        "DSR Eta": cfg.DSR_ETA,
         "Initial PV": float(values.iloc[0]),
         "Final PV": float(values.iloc[-1]),
         "Total Return": float(values.iloc[-1] / values.iloc[0] - 1.0),
@@ -47,7 +57,8 @@ def main() -> None:
         "Max Drawdown": float((values / values.cummax() - 1.0).min()),
         "Sharpe Ratio": float(returns.mean() / returns.std() * np.sqrt(cfg.PERIODS_PER_YEAR)) if returns.std() > 0 else 0.0,
     }
-    pd.DataFrame([metrics]).to_csv(cfg.MODEL_RESULTS / "buy_and_hold_4h_metrics.csv", index=False)
+    metrics.update(summarize_dsr(result))
+    pd.DataFrame([metrics]).to_csv(cfg.MODEL_RESULTS / "buy_and_hold_4h_metrics.csv", index=False, lineterminator="\n")
     print("=" * 72)
     print("4H EXPERIMENT 1 - STATIC 20% BUY-AND-HOLD")
     print("=" * 72)

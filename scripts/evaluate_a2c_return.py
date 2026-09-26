@@ -1,4 +1,7 @@
-"""相容入口：評估A2C＋Portfolio Return版本。"""
+"""評估4H Experiment 3的A2C＋Portfolio Return版本。"""
+
 from experiment3_common import evaluate
+
+
 if __name__ == "__main__":
     evaluate("a2c")

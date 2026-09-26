@@ -330,9 +330,13 @@ class CryptoPortfolioEnv(gym.Env):
             reward = float(self.balance)
         elif self.reward_type in {"delta_pv", "delta"}:
             reward = float(self.balance_history[-1] - self.balance_history[-2])
+        elif self.reward_type in {"return", "portfolio_return"}:
+            # Single-period portfolio return: PV_t / PV_(t-1) - 1.
+            reward = portfolio_return
         else:
             raise ValueError(
-                "reward_type must be 'dsr', 'hybrid', 'pv', or 'delta_pv'."
+                "reward_type must be 'dsr', 'hybrid', 'pv', 'delta_pv', "
+                "or 'portfolio_return'."
             )
 
         self.reward_history.append(reward)

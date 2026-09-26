@@ -21,8 +21,8 @@ class DiscretePortfolioWrapper(gym.ActionWrapper):
     def __init__(
         self,
         env,
-        weight_step=0.2,
-        max_crypto_weight=0.6,
+        weight_step=0.1,
+        max_crypto_weight=0.4,
     ):
         super().__init__(env)
 

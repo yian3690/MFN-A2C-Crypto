@@ -1,4 +1,7 @@
-"""相容入口：訓練A2C＋Portfolio Return版本。"""
+"""訓練4H Experiment 3的A2C＋Portfolio Return版本。"""
+
 from experiment3_common import train
+
+
 if __name__ == "__main__":
     train("a2c")

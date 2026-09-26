@@ -41,7 +41,7 @@ def main() -> None:
     result = attach_timestamps(base_env.get_results(), raw)
     result = add_dsr_columns(result, eta=base_env.eta,
                              warmup_steps=base_env.dsr_warmup_steps,
-                             formula=base_env.dsr_formula)
+                             formula=cfg.EVALUATION_DSR_FORMULA)
     result = add_strength_alignment_columns(result, horizons=(3, 6, 18, 42))
     result.to_csv(cfg.MODEL_RESULTS / cfg.DQN_RESULT_NAME, index=False)
     values = pd.to_numeric(result["portfolio_value"])
@@ -64,6 +64,9 @@ def main() -> None:
         index=False,
     )
     print("=" * 72); print("4H EXPERIMENT 2 - DQN BACKTEST"); print("=" * 72)
+    print(f"Model            : {cfg.MODELS / cfg.DQN_MODEL_NAME}.zip")
+    print(f"Configured steps : {cfg.TOTAL_TIMESTEPS:,} ({cfg.STEP_TAG})")
+    print(f"Evaluation DSR   : {cfg.EVALUATION_DSR_FORMULA}")
     print(f"Initial PV   : {metrics['Initial PV']:.2f}")
     print(f"Final PV     : {metrics['Final PV']:.2f}")
     print(f"Total Return : {metrics['Total Return']:.2%}")
