@@ -1,4 +1,4 @@
-"""三種4H A2C方法共用的訓練與跨目標步數續訓流程。"""
+"""4H A2C方法共用的訓練與跨目標步數續訓流程。"""
 
 from __future__ import annotations
 
@@ -19,6 +19,7 @@ from stable_baselines3.common.monitor import Monitor
 import config_4h as cfg
 from src.dman_temporal_attention_extractor import DualLSTMDMANTemporalAttention
 from src.multi_epoch_a2c import MultiEpochA2C
+from src.original_mfn_extractor import OriginalTwoViewMFN
 from src.price_only_env import PriceOnlyWrapper
 from src.training_diagnostics import TrainingDiagnosticsCallback
 
@@ -26,6 +27,7 @@ METHOD_LABELS = {
     "a2c": "A2C BASELINE",
     "without_ti": "A2C WITHOUT TI",
     "dman_attention": "DUAL-LSTM + DMAN + TEMPORAL SELF-ATTENTION A2C",
+    "original_mfn": "ORIGINAL DUAL-LSTM + DMAN + MGM MFN-A2C",
 }
 _TARGET_STEP_PATTERN = re.compile(r"_\d+K_", flags=re.IGNORECASE)
 _CHECKPOINT_STEPS_PATTERN = re.compile(r"_(\d+)_steps\.zip$", flags=re.IGNORECASE)
@@ -55,6 +57,23 @@ def model_kwargs(method: str) -> dict:
                 "dman_hidden": 64,
                 "temporal_dim": 128,
                 "temporal_attention_heads": 4,
+                "dropout": 0.0,
+            },
+        )
+        kwargs["policy_kwargs"] = policy_kwargs
+        kwargs["device"] = cfg.ATTENTION_DEVICE
+    elif method == "original_mfn":
+        # 原 MFN 控制組：保留雙 LSTM、DMAN、candidate memory 與 MGM gates。
+        policy_kwargs.update(
+            features_extractor_class=OriginalTwoViewMFN,
+            features_extractor_kwargs={
+                "price_dim": cfg.PRICE_DIM,
+                "indicator_dim": cfg.INDICATOR_DIM,
+                "lstm_hidden": 64,
+                "memory_dim": 128,
+                "attention_hidden": 64,
+                "candidate_hidden": 64,
+                "gate_hidden": 64,
                 "dropout": 0.0,
             },
         )
@@ -187,7 +206,8 @@ def train(method: str, argv: list[str] | None = None) -> None:
     )
 
     print("=" * 72)
-    print(f"4H EXPERIMENT 1 - {METHOD_LABELS[method]}")
+    experiment_number = 4 if method == "original_mfn" else 1
+    print(f"4H EXPERIMENT {experiment_number} - {METHOD_LABELS[method]}")
     print("=" * 72)
     print(f"Target steps    : {cfg.TOTAL_TIMESTEPS:,}")
     print(f"Resume source   : {resume_path if resume_path else 'none'}")

@@ -150,6 +150,35 @@ def plot_experiment2(
     return outputs
 
 
+def build_summary_table(
+    curves: dict[str, pd.DataFrame],
+) -> pd.DataFrame:
+    """建立論文 Experiment 2 的最終績效與風險調整績效表。"""
+    buy_hold_final = float(
+        curves["Buy and Hold"]["portfolio_value"].iloc[-1]
+    )
+    if buy_hold_final == 0.0:
+        raise ValueError("Buy-and-Hold 的最終 PV 不可為 0。")
+
+    rows = []
+    for name, frame in curves.items():
+        values = frame["portfolio_value"]
+        expanding_sharpe = frame["expanding_sharpe_ratio"].dropna()
+        final_pv = float(values.iloc[-1])
+        rows.append({
+            "Method": name,
+            "Final PV": final_pv,
+            "Improve": final_pv / buy_hold_final,
+            "MDD": float((values / values.cummax() - 1.0).min()),
+            "Sharpe Ratio": (
+                float(expanding_sharpe.iloc[-1])
+                if not expanding_sharpe.empty
+                else np.nan
+            ),
+        })
+    return pd.DataFrame(rows)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="繪製 4H Experiment 2 三張比較圖。")
     parser.add_argument(
@@ -182,25 +211,14 @@ def main() -> None:
     output_csv = cfg.EXPERIMENT_RESULTS / f"experiment2_4h_{step_tag}_comparison.csv"
     comparison.to_csv(output_csv, index=False, lineterminator="\n")
 
-    baseline = float(curves["Buy and Hold"]["portfolio_value"].iloc[-1])
-    rows = []
-    for name, frame in curves.items():
-        values = frame["portfolio_value"]
-        rows.append({
-            "Method": name,
-            "Peak PV": values.max(),
-            "Final PV": values.iloc[-1],
-            "Final Improve": values.iloc[-1] / baseline,
-            "Peak Cumulative DSR": frame["cumulative_dsr"].max(),
-            "Final Cumulative DSR": frame["cumulative_dsr"].iloc[-1],
-            "Final Expanding Sharpe": frame["expanding_sharpe_ratio"].iloc[-1],
-        })
-    table = pd.DataFrame(rows)
+    table = build_summary_table(curves)
     table_output = cfg.EXPERIMENT_RESULTS / f"experiment2_4h_{step_tag}_table.csv"
     table.to_csv(table_output, index=False, lineterminator="\n")
 
     pv_figure, dsr_figure, sharpe_figure = plot_experiment2(curves, step_tag)
-    print(table.to_string(index=False))
+    display = table.copy()
+    display["MDD"] = display["MDD"].map(lambda value: f"{value:.2%}")
+    print(display.to_string(index=False))
     print(f"Saved: {output_csv}")
     print(f"Saved: {table_output}")
     print(f"Saved: {pv_figure}")

@@ -47,7 +47,7 @@ INDICATORS_PER_ASSET = len(TECHNICAL_INDICATORS)
 INDICATOR_DIM = len(PORTFOLIO_ASSETS) * INDICATORS_PER_ASSET
 
 # 修改此數值後，模型、結果與checkpoint標籤會自動更新。
-TOTAL_TIMESTEPS = 900_000
+TOTAL_TIMESTEPS = 1200_000
 STEP_TAG = f"{TOTAL_TIMESTEPS // 1000}k"
 SEED = 456
 LEARNING_RATE = 7e-4
@@ -112,6 +112,7 @@ MODEL_NAMES = {
     "a2c": f"a2c_baseline_{RUN_TAG}",
     "without_ti": f"a2c_without_ti_{RUN_TAG}",
     "dman_attention": f"dman_temporal_attention_a2c_{RUN_TAG}_cpu_diag5",
+    "original_mfn": f"original_mfn_a2c_{RUN_TAG}_cpu_diag5",
 }
 RESULT_NAMES = {
     key: f"{value}_results.csv" for key, value in MODEL_NAMES.items()

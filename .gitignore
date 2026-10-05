@@ -14,6 +14,9 @@ formal_metrics.csv
 mfn_vs_buyhold.csv
 *.png
 
+# README與文件中的固定圖片允許提交；實驗輸出的PNG仍維持忽略。
+!/docs/images/*.png
+
 # 所有模型 ZIP 一律忽略；不再例外追蹤任何正式模型 ZIP。
 _archive_2h_pending_delete_*/
 
@@ -28,3 +31,5 @@ scripts/cumulative_dsr_test/figures/
 /models/
 /results/
 /figures/
+/tmp/
+/original/

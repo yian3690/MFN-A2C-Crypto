@@ -111,6 +111,35 @@ def _save_figure(fig, output: Path) -> None:
         temporary.unlink(missing_ok=True)
 
 
+def build_summary_table(
+    curves: dict[str, pd.DataFrame],
+) -> pd.DataFrame:
+    """建立論文 Experiment 3 的最終績效與風險調整績效表。"""
+    baseline_label = METHOD_LABELS["a2c_return"]
+    baseline_final = float(curves[baseline_label]["portfolio_value"].iloc[-1])
+    if baseline_final == 0.0:
+        raise ValueError("A2C_Return 的最終 PV 不可為 0。")
+
+    rows = []
+    for label in METHOD_LABELS.values():
+        frame = curves[label]
+        values = frame["portfolio_value"]
+        expanding_sharpe = frame["expanding_sharpe_ratio"].dropna()
+        final_pv = float(values.iloc[-1])
+        rows.append({
+            "Method": label,
+            "Final PV": final_pv,
+            "Improve": final_pv / baseline_final,
+            "MDD": float((values / values.cummax() - 1.0).min()),
+            "Sharpe Ratio": (
+                float(expanding_sharpe.iloc[-1])
+                if not expanding_sharpe.empty
+                else np.nan
+            ),
+        })
+    return pd.DataFrame(rows)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="繪製4H Experiment 3四線比較圖。")
     parser.add_argument(
@@ -145,27 +174,7 @@ def main() -> None:
     )
     comparison.to_csv(output_csv, index=False, lineterminator="\n")
 
-    baseline = float(comparison[METHOD_LABELS["a2c_return"]].iloc[-1])
-    baseline_peak = float(comparison[METHOD_LABELS["a2c_return"]].max())
-    rows = []
-    for label in METHOD_LABELS.values():
-        values = comparison[label]
-        returns = values.pct_change().dropna()
-        rows.append({
-            "Method": label,
-            "Peak PV": values.max(),
-            "Peak Improve": values.max() / baseline_peak,
-            "Final PV": values.iloc[-1],
-            "Final Improve": values.iloc[-1] / baseline,
-            "Total Return": values.iloc[-1] / values.iloc[0] - 1.0,
-            "Max Drawdown": (values / values.cummax() - 1.0).min(),
-            "Sharpe Ratio": (
-                returns.mean() / returns.std() * np.sqrt(cfg.PERIODS_PER_YEAR)
-                if returns.std() > 0
-                else 0.0
-            ),
-        })
-    table = pd.DataFrame(rows)
+    table = build_summary_table(curves)
     table_output = cfg.EXPERIMENT_RESULTS / f"experiment3_4h_{step_tag}_table.csv"
     table.to_csv(table_output, index=False, lineterminator="\n")
 
@@ -204,7 +213,9 @@ def main() -> None:
     _save_figure(fig, sharpe_figure)
     plt.close(fig)
 
-    print(table.to_string(index=False))
+    display = table.copy()
+    display["MDD"] = display["MDD"].map(lambda value: f"{value:.2%}")
+    print(display.to_string(index=False))
     print(f"Saved: {output_csv}")
     print(f"Saved: {table_output}")
     print(f"Saved: {pv_figure}")

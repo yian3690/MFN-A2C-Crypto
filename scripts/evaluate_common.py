@@ -18,6 +18,7 @@ import config_4h as cfg
 from src.dman_temporal_attention_extractor import (  # noqa: F401
     DualLSTMDMANTemporalAttention,
 )
+from src.original_mfn_extractor import OriginalTwoViewMFN  # noqa: F401
 from src.evaluation_metrics import (
     add_dsr_columns,
     add_strength_alignment_columns,
@@ -136,7 +137,11 @@ def evaluate(method: str) -> None:
     pd.DataFrame([metrics]).to_csv(metrics_path, index=False)
 
     print("=" * 72)
-    print(f"4H EXPERIMENT 1 - {METHOD_LABELS[method]} BACKTEST")
+    experiment_number = 4 if method == "original_mfn" else 1
+    print(
+        f"4H EXPERIMENT {experiment_number} - "
+        f"{METHOD_LABELS[method]} BACKTEST"
+    )
     print("=" * 72)
     print(f"Model            : {model_path}.zip")
     print(f"Configured steps : {cfg.TOTAL_TIMESTEPS:,} ({cfg.STEP_TAG})")

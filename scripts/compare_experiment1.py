@@ -1,4 +1,4 @@
-"""彙整4H Experiment 1，並以論文EWMA actual-change DSR輸出分開圖表。"""
+"""彙整4H Experiment 1的PV與Annualized Expanding Sharpe。"""
 
 from __future__ import annotations
 
@@ -15,8 +15,6 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import config_4h as cfg
-from src.dsr import calculate_dsr_series
-from src.evaluation_metrics import summarize_dsr
 
 METHODS = (
     "dman_attention",
@@ -49,18 +47,8 @@ def result_files(steps: int) -> dict[str, str]:
     return files
 
 
-def metric_files(steps: int) -> dict[str, Path]:
-    files = {
-        key: cfg.MODEL_RESULTS
-        / _replace_step_tag(f"{cfg.MODEL_NAMES[key]}_metrics.csv", steps)
-        for key in METHODS
-    }
-    files["buy_and_hold"] = cfg.MODEL_RESULTS / "buy_and_hold_4h_metrics.csv"
-    return files
-
-
 def load_curve(label: str, filename: str) -> pd.DataFrame:
-    """由PV報酬重算論文EWMA actual-change DSR。"""
+    """由PV重算單期報酬與年化Expanding Sharpe。"""
     path = cfg.MODEL_RESULTS / filename
     if not path.exists():
         raise FileNotFoundError(f"{label}缺少逐步結果：{path}")
@@ -77,16 +65,6 @@ def load_curve(label: str, filename: str) -> pd.DataFrame:
 
     # 正式評估固定採PV_t / PV_{t-1} - 1，不讀模型reward或舊版return。
     frame["return"] = frame["portfolio_value"].pct_change()
-    valid_returns = frame["return"].dropna()
-    step_dsr = calculate_dsr_series(
-        valid_returns.to_numpy(),
-        eta=cfg.DSR_ETA,
-        formula=cfg.EVALUATION_DSR_FORMULA,
-    )
-    frame["dsr"] = np.nan
-    frame.loc[valid_returns.index, "dsr"] = step_dsr
-    frame["cumulative_dsr"] = frame["dsr"].fillna(0.0).cumsum()
-
     # 與報表Sharpe採相同4H年化係數；最後一點應等於整段回測Sharpe。
     expanding = frame["return"].expanding(
         min_periods=cfg.RELATIVE_STRENGTH_BARS
@@ -117,17 +95,14 @@ def _load_aligned_curves(steps: int) -> dict[str, pd.DataFrame]:
 def plot_experiment1(
     curves: dict[str, pd.DataFrame],
     step_tag: str,
-) -> tuple[Path, Path, Path]:
-    """分別輸出PV、EWMA cumulative DSR與expanding Sharpe圖。"""
+) -> tuple[Path, Path]:
+    """分別輸出PV與Annualized Expanding Sharpe兩張圖。"""
     length = len(next(iter(curves.values())))
     x = np.arange(length)
 
     output_dir = cfg.FIGURES / "experiment1"
     output_dir.mkdir(parents=True, exist_ok=True)
     pv_output = output_dir / f"experiment1_4h_{step_tag}_portfolio_value.png"
-    dsr_output = output_dir / (
-        f"experiment1_4h_{step_tag}_differential_sharpe_ratio.png"
-    )
     sharpe_output = output_dir / (
         f"experiment1_4h_{step_tag}_expanding_sharpe_ratio.png"
     )
@@ -145,17 +120,6 @@ def plot_experiment1(
 
     fig, ax = plt.subplots(figsize=(8.4, 6.4))
     for label, frame in curves.items():
-        ax.plot(x, frame["cumulative_dsr"], label=label, linewidth=1.7)
-    ax.set_xlabel("iter(4hrs)")
-    ax.set_ylabel("Differential Sharpe Ratio")
-    ax.grid(alpha=0.20)
-    ax.legend(title="Method", loc="upper left")
-    fig.tight_layout()
-    fig.savefig(dsr_output, dpi=300, bbox_inches="tight")
-    plt.close(fig)
-
-    fig, ax = plt.subplots(figsize=(8.4, 6.4))
-    for label, frame in curves.items():
         ax.plot(x, frame["expanding_sharpe_ratio"], label=label, linewidth=1.7)
     ax.axhline(0.0, color="black", linewidth=0.8, alpha=0.6)
     ax.set_xlabel("iter(4hrs)")
@@ -165,7 +129,33 @@ def plot_experiment1(
     fig.tight_layout()
     fig.savefig(sharpe_output, dpi=300, bbox_inches="tight")
     plt.close(fig)
-    return pv_output, dsr_output, sharpe_output
+    return pv_output, sharpe_output
+
+
+def build_summary_table(
+    curves: dict[str, pd.DataFrame],
+) -> pd.DataFrame:
+    """建立與新Table II一致的績效摘要。"""
+    buy_hold = curves[METHOD_LABELS["buy_and_hold"]]["portfolio_value"]
+    rows = []
+    for label, frame in curves.items():
+        values = frame["portfolio_value"]
+        expanding_sharpe = frame["expanding_sharpe_ratio"].dropna()
+        rows.append({
+            "Method": label,
+            "Peak PV": float(values.max()),
+            "Peak Improve": float(values.max() / buy_hold.max()),
+            "Final PV": float(values.iloc[-1]),
+            "Final Improve": float(values.iloc[-1] / buy_hold.iloc[-1]),
+            "Total Return": float(values.iloc[-1] / values.iloc[0] - 1.0),
+            "Max Drawdown": float((values / values.cummax() - 1.0).min()),
+            "Final Expanding Sharpe": (
+                float(expanding_sharpe.iloc[-1])
+                if not expanding_sharpe.empty
+                else np.nan
+            ),
+        })
+    return pd.DataFrame(rows)
 
 
 def main() -> None:
@@ -181,59 +171,43 @@ def main() -> None:
         parser.error("--steps必須是正整數且可被1000整除。")
     step_tag = f"{args.steps // 1000}k"
 
-    files = metric_files(args.steps)
-    paths = list(files.values())
-    missing = [str(path) for path in paths if not path.exists()]
-    if missing:
-        raise FileNotFoundError(
-            "請先完成三個模型與Buy-and-Hold評估，缺少：\n"
-            + "\n".join(missing)
-        )
-
-    rows = pd.concat([pd.read_csv(path) for path in paths], ignore_index=True)
     curves = _load_aligned_curves(args.steps)
-
-    # 不採用舊metrics中的DSR；四種方法都由相同PV公式重新計算。
-    for method, label in METHOD_LABELS.items():
-        dsr_metrics = summarize_dsr(curves[label])
-        selection = rows["Method"] == method
-        for column, value in dsr_metrics.items():
-            rows.loc[selection, column] = value
-
-    buy_hold = rows.loc[rows["Method"] == "buy_and_hold"]
-    buy_hold_final = float(buy_hold["Final PV"].iloc[0])
-    buy_hold_peak = float(buy_hold["Peak PV"].iloc[0])
-    rows["DSR Formula"] = cfg.EVALUATION_DSR_FORMULA
-    rows["DSR Eta"] = cfg.DSR_ETA
-    rows["Final Improve"] = rows["Final PV"] / buy_hold_final
-    rows["Peak Improve"] = rows["Peak PV"] / buy_hold_peak
-    columns = [
-        "Method",
-        "DSR Formula",
-        "DSR Eta",
-        "Peak PV",
-        "Peak Improve",
-        "Final PV",
-        "Final Improve",
-        "Total Return",
-        "Max Drawdown",
-        "Sharpe Ratio",
-        "Peak Cumulative DSR",
-        "Final Cumulative DSR",
-    ]
     cfg.EXPERIMENT_RESULTS.mkdir(parents=True, exist_ok=True)
-    output = cfg.EXPERIMENT_RESULTS / f"experiment1_{step_tag}_comparison.csv"
-    rows[columns].to_csv(output, index=False, lineterminator="\n")
+    reference = next(iter(curves.values()))["timestamp"].reset_index(drop=True)
+    comparison = pd.DataFrame({
+        "timestamp": reference,
+        **{
+            f"{label} Portfolio Value": frame["portfolio_value"].values
+            for label, frame in curves.items()
+        },
+        **{
+            f"{label} Expanding Sharpe": frame[
+                "expanding_sharpe_ratio"
+            ].values
+            for label, frame in curves.items()
+        },
+    })
+    comparison_output = (
+        cfg.EXPERIMENT_RESULTS
+        / f"experiment1_4h_{step_tag}_comparison.csv"
+    )
+    comparison.to_csv(comparison_output, index=False, lineterminator="\n")
 
-    display = rows[columns].copy()
+    table = build_summary_table(curves)
+    table_output = (
+        cfg.EXPERIMENT_RESULTS / f"experiment1_4h_{step_tag}_table.csv"
+    )
+    table.to_csv(table_output, index=False, lineterminator="\n")
+
+    display = table.copy()
     for column in ("Total Return", "Max Drawdown"):
         display[column] = display[column].map(lambda value: f"{value:.2%}")
     print(display.to_string(index=False))
-    print(f"\nSaved: {output}")
+    print(f"\nSaved: {comparison_output}")
+    print(f"Saved: {table_output}")
 
-    pv_figure, dsr_figure, sharpe_figure = plot_experiment1(curves, step_tag)
+    pv_figure, sharpe_figure = plot_experiment1(curves, step_tag)
     print(f"Saved: {pv_figure}")
-    print(f"Saved: {dsr_figure}")
     print(f"Saved: {sharpe_figure}")
 
 

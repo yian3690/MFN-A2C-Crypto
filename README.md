@@ -92,11 +92,12 @@ PV版本也支援`--resume`。繪圖輸出：
 
 ## 主要架構
 
-```text
-Price LSTM ─┐
-            ├→ DMAN → Temporal Self-Attention → Attention Pooling → A2C
-TI LSTM ────┘
-```
+本專案的多模態融合設計主要參考
+[Memory Fusion Network（MFN）](https://github.com/pliang279/MFN)。目前架構保留
+模態專屬LSTM與DMAN，並以Temporal Self-Attention及Attention Pooling取代
+原始MFN的MGM，再將融合後的狀態表示輸入A2C進行投資組合配置。
+
+![DMTA-A2C架構圖](docs/images/dmta_a2c_architecture.png)
 
 - `src/dman_temporal_attention_extractor.py`是目前唯一的自訂雙模態特徵擷取器。
 - DMAN在每個時間點融合價格與技術指標LSTM狀態。
