@@ -13,7 +13,7 @@ Binance 4小時K線，資產為BTC、ETH、LTC、BNB與USDT。
 - Train：Test以前的完整資料；不使用Validation。
 - Train episode：隨機抽取180天。
 - Window：`LOOKBACK=20`，即80小時；可在`scripts/config_4h.py`修改。
-- 特徵：5維price-relative＋25維SMA20、EMA20、MACD、RSI14、RS_14D。
+- 特徵：4維price-relative＋25維SMA20、EMA20、MACD、RSI14。
 - Reward：由`scripts/config_4h.py`的`DSR_REWARD_SCALE`、`RETURN_REWARD_SCALE`與`DSR_ETA`統一管理。
 - A2C：`n_steps=540`、epoch=1、normalize advantage、`log_std_init=-2`。
 - DQN：5%離散權重網格、每項加密貨幣上限35%，共3,766種合法配置。
