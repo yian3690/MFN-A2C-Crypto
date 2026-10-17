@@ -1,4 +1,4 @@
-# DMTA-A2C Cryptocurrency Portfolio Optimization（4H）
+# DMTA-A2C Cryptocurrency Portfolio Optimization
 
 本專案實作Dual-LSTM DMAN Temporal-Attention A2C（DMTA-A2C），目前統一使用
 Binance 4小時K線，資產為BTC、ETH、LTC、BNB與USDT。
@@ -146,11 +146,6 @@ python scripts\compare_experiment4.py
 
 ## 注意事項
 
-- 本機`original/`只保存舊版參考原碼，不參與目前4H流程，也不提交Git。
-- 本機`tmp/`只存放暫存檔，不提交Git。
-- 模型ZIP、checkpoint、logs與大型資料不應提交Git。
-- 變更資料頻率、LOOKBACK、reward或特徵後，舊模型不可直接比較。
-- 正式結果應使用多個random seed報告平均值與標準差。
 - 目前未建模交易手續費與滑價。
 
 模型、結果與checkpoint標籤會依`config_4h.py`主要參數動態生成。
